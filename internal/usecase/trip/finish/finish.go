@@ -10,24 +10,30 @@ import (
 )
 
 func (s *Service) FinishTrip(ctx context.Context, id uuid.UUID) (trip.Trip, error) {
-	finishAt := time.Now().UTC()
-	fromStatus := trip.TripStatusActive
-	reason := "trip finished"
-
-	history := trip.TripStatusHistory{
-		TripID:     id,
-		FromStatus: &fromStatus,
-		ToStatus:   trip.TripStatusCompleted,
-		Reason:     &reason,
-		ChangedAt:  finishAt,
-	}
-
 	var tripOut trip.Trip
 	err := s.txManager.Do(ctx, func(txCtx context.Context) error {
-		var err error
-		tripOut, err = s.tripRepository.FinishTrip(txCtx, id, finishAt)
+		tripOut, err := s.tripRepository.GetTrip(txCtx, id)
+		if err != nil {
+			return fmt.Errorf("get trip to finish: %w", err)
+		}
+
+		fromStatus := tripOut.Status
+		if err := tripOut.Finish(time.Now().UTC()); err != nil {
+			return fmt.Errorf("finish trip: %w", err)
+		}
+
+		tripOut, err = s.tripRepository.FinishTrip(txCtx, id, *tripOut.FinishedAt)
 		if err != nil {
 			return fmt.Errorf("finish trip: %w", err)
+		}
+
+		reason := "trip finished"
+		history := trip.TripStatusHistory{
+			TripID:     tripOut.ID,
+			FromStatus: &fromStatus,
+			ToStatus:   tripOut.Status,
+			Reason:     &reason,
+			ChangedAt:  *tripOut.FinishedAt,
 		}
 		if err := s.tripStatusHistoryRepository.AddInTripHistory(txCtx, history); err != nil {
 			return fmt.Errorf("add finished trip status history: %w", err)

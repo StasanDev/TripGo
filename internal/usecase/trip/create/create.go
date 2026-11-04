@@ -11,6 +11,10 @@ import (
 )
 
 func (s *Service) CreateTrip(ctx context.Context, tripInp trip.TripInput) (trip.Trip, bool, error) {
+	if err := tripInp.Validate(); err != nil {
+		return trip.Trip{}, false, fmt.Errorf("%w: %w", trip.ErrInvalidInput, err)
+	}
+
 	now := time.Now().UTC()
 	tripOut := trip.Trip{
 		TripInput:  tripInp,

@@ -11,6 +11,8 @@ import (
 
 func Problem(err error) (int, api.Problem) {
 	switch {
+	case errors.Is(err, trip.ErrInvalidInput):
+		return http.StatusBadRequest, InvalidRequest(err.Error())
 	case errors.Is(err, trip.ErrDriverBusy):
 		return http.StatusConflict, problem(
 			http.StatusConflict, "driver_busy", "Driver busy", "Driver already has an active trip",

@@ -13,6 +13,7 @@ import (
 
 type (
 	tripRepository interface {
+		GetTrip(ctx context.Context, id uuid.UUID) (trip.Trip, error)
 		FinishTrip(ctx context.Context, id uuid.UUID, at time.Time) (trip.Trip, error)
 	}
 

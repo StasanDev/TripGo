@@ -31,10 +31,6 @@ func (h *Handler) CreateTrip(w http.ResponseWriter, r *http.Request, params api.
 		response.WriteInvalidRequest(w, r, err)
 		return
 	}
-	if err := validateTripData(body); err != nil {
-		response.WriteInvalidRequest(w, r, err)
-		return
-	}
 
 	input := tripInputFromAPI(body)
 	if params.IdempotencyKey != nil {
