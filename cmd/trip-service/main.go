@@ -3,58 +3,43 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/StasanDev/avitoLabs/internal/config"
-	database "github.com/StasanDev/avitoLabs/internal/database/postgres"
-	"github.com/StasanDev/avitoLabs/internal/handler"
-	repo "github.com/StasanDev/avitoLabs/internal/repository/postgres"
-	"github.com/StasanDev/avitoLabs/internal/usecase"
+	"github.com/StasanDev/avitoLabs/internal/container"
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Printf("service failed: %v", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+		return fmt.Errorf("load config: %w", err)
 	}
 	// log.Println(cfg)
 	log.Printf("config is loaded")
 
 	ctx := context.Background()
-	dbConnCtx, cancel := context.WithTimeout(ctx, cfg.DB.ConnectTimeout)
-	defer cancel()
-
-	pool, err := database.NewPostgresPool(dbConnCtx, &cfg.DB)
+	app, err := container.BuildApp(ctx, cfg)
 	if err != nil {
-		log.Fatalf("failed to create postgres pool: %v", err)
+		return fmt.Errorf("build app: %w", err)
 	}
-	log.Printf("connected to db")
-
-	tripRepository := repo.NewTripRepository(pool, cfg.DB.QueryTimeout)
-	tripStatusHistoryRepository := repo.NewTripStatusRepository(pool, cfg.DB.QueryTimeout)
-	idempotencyRepository := repo.NewIdempotencyRepository(pool, cfg.DB.QueryTimeout)
-	txManager := repo.NewTxManager(pool, cfg.DB.QueryTimeout)
-	tripService := usecase.NewTripService(tripRepository, tripStatusHistoryRepository,
-		idempotencyRepository, txManager, cfg.IdempotencyTTL)
-	httpHandler := handler.NewHandler(tripService, pool, cfg.DB.QueryTimeout)
-	router := handler.NewRouter(httpHandler)
-
-	server := &http.Server{
-		Addr:              cfg.Http.Addr,
-		Handler:           router,
-		ReadTimeout:       cfg.Http.ReadTimeout,
-		ReadHeaderTimeout: cfg.Http.ReadHeaderTimeout,
-		WriteTimeout:      cfg.Http.WriteTimeout,
-		IdleTimeout:       cfg.Http.IdleTimeout,
-	}
+	log.Printf("app is built")
 
 	serverErrors := make(chan error, 1)
 	go func() {
-		log.Printf("HTTP server is listening on %s", cfg.Http.Addr)
-		serverErrors <- server.ListenAndServe()
+		log.Printf("starting HTTP server on %s", cfg.Http.Addr)
+		serverErrors <- app.Run()
 	}()
 
 	signalContext, stop := signal.NotifyContext(
@@ -64,10 +49,11 @@ func main() {
 	)
 	defer stop()
 
+	var runErr error
 	select {
 	case err := <-serverErrors:
-		if !errors.Is(err, http.ErrServerClosed) {
-			log.Printf("HTTP server: %v", err)
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			runErr = fmt.Errorf("HTTP server: %w", err)
 		}
 	case <-signalContext.Done():
 	}
@@ -75,29 +61,10 @@ func main() {
 	shutdownCtx, cancelShutdown := context.WithTimeout(ctx, cfg.ShutdownTimeout)
 	defer cancelShutdown()
 
-	if err := shutdown(shutdownCtx, server.Shutdown, pool.Close); err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			log.Printf("shutdown timeout exceeded; forcing exit: %v", err)
-			return
-		}
-		log.Printf("graceful shutdown failed: %v", err)
+	if err := app.Shutdown(shutdownCtx); err != nil {
+		return errors.Join(runErr, fmt.Errorf("graceful shutdown: %w", err))
 	}
 
 	log.Printf("service stopped")
-}
-
-func shutdown(ctx context.Context, shutdownHTTP func(context.Context) error, close func()) error {
-	done := make(chan error, 1)
-	go func() {
-		err := shutdownHTTP(ctx)
-		close()
-		done <- err
-	}()
-
-	select {
-	case err := <-done:
-		return err
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return runErr
 }

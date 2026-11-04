@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"time"
 )
 
@@ -32,29 +31,12 @@ type DBConfig struct {
 	MaxConnLifetime time.Duration
 }
 
-var envNames = []string{
-	"LOG_LEVEL", "SHUTDOWN_TIMEOUT", "IDEMPOTENCY_TTL", "HTTP_ADDR", "HTTP_READ_TIMEOUT",
-	"HTTP_READ_HEADER_TIMEOUT", "HTTP_WRITE_TIMEOUT", "HTTP_IDLE_TIMEOUT",
-	"DATABASE_URL", "DATABASE_MIN_CONNS", "DATABASE_MAX_CONNS",
-	"DATABASE_CONNECT_TIMEOUT", "DATABASE_QUERY_TIMEOUT", "DATABASE_MAX_CONN_LIFETIME",
-}
-
-var defaultEnvValues = map[string]string{
-	"IDEMPOTENCY_TTL":          "24h",
-	"HTTP_READ_TIMEOUT":        "30s",
-	"HTTP_READ_HEADER_TIMEOUT": "5s",
-	"HTTP_WRITE_TIMEOUT":       "30s",
-	"HTTP_IDLE_TIMEOUT":        "60s",
-}
-
-var durationEnvNames = []string{
-	"SHUTDOWN_TIMEOUT", "IDEMPOTENCY_TTL", "HTTP_READ_TIMEOUT",
-	"HTTP_READ_HEADER_TIMEOUT", "HTTP_WRITE_TIMEOUT", "HTTP_IDLE_TIMEOUT",
-	"DATABASE_CONNECT_TIMEOUT", "DATABASE_QUERY_TIMEOUT", "DATABASE_MAX_CONN_LIFETIME",
-}
-
-var int32EnvNames = [...]string{
-	"DATABASE_MIN_CONNS", "DATABASE_MAX_CONNS",
+type OTelConfig struct {
+	ServiceName        string
+	ExporterEndpoint   string
+	ExporterProtocol   string
+	ResourceAttributes string
+	TracesSampler      string
 }
 
 func LoadConfig() (*Config, error) {
@@ -112,38 +94,6 @@ func readEnv(names []string, defaults map[string]string) (map[string]string, err
 			}
 		}
 		values[name] = value
-	}
-
-	return values, nil
-}
-
-func parseDurations(rawValues map[string]string, names []string) (map[string]time.Duration, error) {
-	values := make(map[string]time.Duration, len(names))
-	for _, name := range names {
-		value, err := time.ParseDuration(rawValues[name])
-		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", name, err)
-		}
-		if value <= 0 {
-			return nil, fmt.Errorf("%s must be positive", name)
-		}
-		values[name] = value
-	}
-
-	return values, nil
-}
-
-func parseInt32s(rawValues map[string]string, names []string) (map[string]int32, error) {
-	values := make(map[string]int32, len(names))
-	for _, name := range names {
-		value, err := strconv.ParseInt(rawValues[name], 10, 32)
-		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", name, err)
-		}
-		if value <= 0 {
-			return nil, fmt.Errorf("%s must be positive", name)
-		}
-		values[name] = int32(value)
 	}
 
 	return values, nil
