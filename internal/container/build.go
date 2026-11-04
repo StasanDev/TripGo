@@ -8,14 +8,14 @@ import (
 
 	"github.com/StasanDev/avitoLabs/internal/config"
 	httptransport "github.com/StasanDev/avitoLabs/internal/http"
-	"github.com/StasanDev/avitoLabs/internal/http/health"
-	"github.com/StasanDev/avitoLabs/internal/http/ready"
 	"github.com/StasanDev/avitoLabs/internal/http/trip/create"
 	"github.com/StasanDev/avitoLabs/internal/http/trip/finish"
 	"github.com/StasanDev/avitoLabs/internal/http/trip/get"
 	database "github.com/StasanDev/avitoLabs/internal/infra/postgres"
 	repo "github.com/StasanDev/avitoLabs/internal/repository/postgres"
-	"github.com/StasanDev/avitoLabs/internal/usecase"
+	createusecase "github.com/StasanDev/avitoLabs/internal/usecase/trip/create"
+	finishusecase "github.com/StasanDev/avitoLabs/internal/usecase/trip/finish"
+	getusecase "github.com/StasanDev/avitoLabs/internal/usecase/trip/get"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -37,14 +37,18 @@ func BuildApp(ctx context.Context, cfg *config.Config) (*App, error) {
 	tripStatusHistoryRepository := repo.NewTripStatusRepository(pool, cfg.DB.QueryTimeout)
 	idempotencyRepository := repo.NewIdempotencyRepository(pool, cfg.DB.QueryTimeout)
 	txManager := repo.NewTxManager(pool, cfg.DB.QueryTimeout)
-	tripService := usecase.NewTripService(tripRepository, tripStatusHistoryRepository,
-		idempotencyRepository, txManager, cfg.IdempotencyTTL)
+	createService := createusecase.NewService(
+		tripRepository, txManager, idempotencyRepository,
+		tripStatusHistoryRepository, cfg.IdempotencyTTL,
+	)
+	getService := getusecase.NewService(tripRepository)
+	finishService := finishusecase.NewService(tripRepository, tripStatusHistoryRepository, txManager)
 	httpHandler := httptransport.NewHandler(
-		create.NewHandler(tripService),
-		get.NewHandler(tripService),
-		finish.NewHandler(tripService),
-		health.NewHandler(),
-		ready.NewHandler(pool, cfg.DB.QueryTimeout),
+		create.NewHandler(createService),
+		get.NewHandler(getService),
+		finish.NewHandler(finishService),
+		pool,
+		cfg.DB.QueryTimeout,
 	)
 	router, err := httptransport.NewRouter(httpHandler)
 	if err != nil {
