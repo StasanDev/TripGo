@@ -7,7 +7,12 @@ import (
 	"net/http"
 
 	"github.com/StasanDev/avitoLabs/internal/config"
-	"github.com/StasanDev/avitoLabs/internal/handler"
+	httptransport "github.com/StasanDev/avitoLabs/internal/http"
+	"github.com/StasanDev/avitoLabs/internal/http/health"
+	"github.com/StasanDev/avitoLabs/internal/http/ready"
+	"github.com/StasanDev/avitoLabs/internal/http/trip/create"
+	"github.com/StasanDev/avitoLabs/internal/http/trip/finish"
+	"github.com/StasanDev/avitoLabs/internal/http/trip/get"
 	database "github.com/StasanDev/avitoLabs/internal/infra/postgres"
 	repo "github.com/StasanDev/avitoLabs/internal/repository/postgres"
 	"github.com/StasanDev/avitoLabs/internal/usecase"
@@ -34,8 +39,18 @@ func BuildApp(ctx context.Context, cfg *config.Config) (*App, error) {
 	txManager := repo.NewTxManager(pool, cfg.DB.QueryTimeout)
 	tripService := usecase.NewTripService(tripRepository, tripStatusHistoryRepository,
 		idempotencyRepository, txManager, cfg.IdempotencyTTL)
-	httpHandler := handler.NewHandler(tripService, pool, cfg.DB.QueryTimeout)
-	router := handler.NewRouter(httpHandler)
+	httpHandler := httptransport.NewHandler(
+		create.NewHandler(tripService),
+		get.NewHandler(tripService),
+		finish.NewHandler(tripService),
+		health.NewHandler(),
+		ready.NewHandler(pool, cfg.DB.QueryTimeout),
+	)
+	router, err := httptransport.NewRouter(httpHandler)
+	if err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("build HTTP router: %w", err)
+	}
 
 	server := &http.Server{
 		Addr:              cfg.Http.Addr,

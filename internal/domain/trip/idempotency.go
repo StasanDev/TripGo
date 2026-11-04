@@ -1,4 +1,4 @@
-package domain
+package trip
 
 import (
 	"time"

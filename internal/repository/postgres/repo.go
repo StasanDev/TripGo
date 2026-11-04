@@ -8,7 +8,7 @@ import (
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/StasanDev/avitoLabs/internal/domain"
+	"github.com/StasanDev/avitoLabs/internal/domain/trip"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -51,17 +51,17 @@ func NewTripStatusRepository(pool *pgxpool.Pool, queryTimeout time.Duration) *Tr
 	}
 }
 
-func (r *TripRepository) CreateTrip(ctx context.Context, trip domain.Trip) error {
+func (r *TripRepository) CreateTrip(ctx context.Context, tripInp trip.Trip) error {
 	ctx, cancel := context.WithTimeout(ctx, r.queryTimeout)
 	defer cancel()
 
 	query, args, err := sq.
 		Insert(tripsTable).Columns(queryTripCols...).
 		Values(
-			trip.ID, trip.UserID, trip.DriverID,
-			trip.StartPoint.Latitude, trip.StartPoint.Longitude,
-			trip.EndPoint.Latitude, trip.EndPoint.Longitude,
-			trip.Price, trip.Status, trip.StartedAt, trip.FinishedAt,
+			tripInp.ID, tripInp.UserID, tripInp.DriverID,
+			tripInp.StartPoint.Latitude, tripInp.StartPoint.Longitude,
+			tripInp.EndPoint.Latitude, tripInp.EndPoint.Longitude,
+			tripInp.Price, tripInp.Status, tripInp.StartedAt, tripInp.FinishedAt,
 		).PlaceholderFormat(sq.Dollar).ToSql()
 	if err != nil {
 		return fmt.Errorf("build create trip: %w", err)
@@ -70,7 +70,7 @@ func (r *TripRepository) CreateTrip(ctx context.Context, trip domain.Trip) error
 	if _, err := r.executor(ctx).Exec(ctx, query, args...); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == driverActiveUniqueIndex {
-			return domain.ErrDriverBusy
+			return trip.ErrDriverBusy
 		}
 		return fmt.Errorf("insert trip: %w", err)
 	}
@@ -78,7 +78,7 @@ func (r *TripRepository) CreateTrip(ctx context.Context, trip domain.Trip) error
 	return nil
 }
 
-func (r *TripStatusHistoryRepository) AddInTripHistory(ctx context.Context, history domain.TripStatusHistory) error {
+func (r *TripStatusHistoryRepository) AddInTripHistory(ctx context.Context, history trip.TripStatusHistory) error {
 	ctx, cancel := context.WithTimeout(ctx, r.queryTimeout)
 	defer cancel()
 
@@ -96,59 +96,59 @@ func (r *TripStatusHistoryRepository) AddInTripHistory(ctx context.Context, hist
 	return nil
 }
 
-func (r *TripRepository) GetTrip(ctx context.Context, id uuid.UUID) (domain.Trip, error) {
+func (r *TripRepository) GetTrip(ctx context.Context, id uuid.UUID) (trip.Trip, error) {
 	ctx, cancel := context.WithTimeout(ctx, r.queryTimeout)
 	defer cancel()
 
 	query, args, err := sq.Select(queryTripCols...).From(tripsTable).Where(sq.Eq{"id": id}).PlaceholderFormat(sq.Dollar).ToSql()
 	if err != nil {
-		return domain.Trip{}, fmt.Errorf("build get trip: %w", err)
+		return trip.Trip{}, fmt.Errorf("build get trip: %w", err)
 	}
 
 	row := r.executor(ctx).QueryRow(ctx, query, args...)
-	trip, err := scanTrip(row)
+	tripOut, err := scanTrip(row)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.Trip{}, domain.ErrTripNotFound
+			return trip.Trip{}, trip.ErrTripNotFound
 		}
-		return domain.Trip{}, fmt.Errorf("get trip: %w", err)
+		return trip.Trip{}, fmt.Errorf("get trip: %w", err)
 	}
-	return trip, nil
+	return tripOut, nil
 }
 
-func (r *TripRepository) FinishTrip(ctx context.Context, id uuid.UUID, at time.Time) (domain.Trip, error) {
+func (r *TripRepository) FinishTrip(ctx context.Context, id uuid.UUID, at time.Time) (trip.Trip, error) {
 	ctx, cancel := context.WithTimeout(ctx, r.queryTimeout)
 	defer cancel()
 
 	query, args, err := sq.Update(tripsTable).SetMap(map[string]interface{}{
-		"status":      domain.TripStatusCompleted,
+		"status":      trip.TripStatusCompleted,
 		"finished_at": at,
 		"updated_at":  at,
 	}).Where(sq.Eq{
 		"id":     id,
-		"status": domain.TripStatusActive,
+		"status": trip.TripStatusActive,
 	}).Suffix("RETURNING " + strings.Join(queryTripCols, ", ")).
 		PlaceholderFormat(sq.Dollar).ToSql()
 	if err != nil {
-		return domain.Trip{}, fmt.Errorf("build finish trip: %w", err)
+		return trip.Trip{}, fmt.Errorf("build finish trip: %w", err)
 	}
 
 	row := r.executor(ctx).QueryRow(ctx, query, args...)
-	trip, err := scanTrip(row)
+	tripOut, err := scanTrip(row)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			_, err := r.GetTrip(ctx, id)
-			if errors.Is(err, domain.ErrTripNotFound) {
-				return domain.Trip{}, domain.ErrTripNotFound
+			if errors.Is(err, trip.ErrTripNotFound) {
+				return trip.Trip{}, trip.ErrTripNotFound
 			}
 			if err != nil {
-				return domain.Trip{}, fmt.Errorf("check trip after unsuccessful finish: %w", err)
+				return trip.Trip{}, fmt.Errorf("check trip after unsuccessful finish: %w", err)
 			}
-			return domain.Trip{}, domain.ErrTripCompleted
+			return trip.Trip{}, trip.ErrTripCompleted
 		}
-		return domain.Trip{}, fmt.Errorf("finish trip: %w", err)
+		return trip.Trip{}, fmt.Errorf("finish trip: %w", err)
 	}
-	return trip, nil
+	return tripOut, nil
 }
 
 func (r *TripRepository) executor(ctx context.Context) DBTX {
@@ -165,15 +165,15 @@ func (r *TripStatusHistoryRepository) executor(ctx context.Context) DBTX {
 	return r.pool
 }
 
-func scanTrip(row pgx.Row) (domain.Trip, error) {
-	var trip domain.Trip
-	err := row.Scan(&trip.ID, &trip.UserID, &trip.DriverID,
-		&trip.StartPoint.Latitude, &trip.StartPoint.Longitude,
-		&trip.EndPoint.Latitude, &trip.EndPoint.Longitude,
-		&trip.Price, &trip.Status, &trip.StartedAt, &trip.FinishedAt)
+func scanTrip(row pgx.Row) (trip.Trip, error) {
+	var tripOut trip.Trip
+	err := row.Scan(&tripOut.ID, &tripOut.UserID, &tripOut.DriverID,
+		&tripOut.StartPoint.Latitude, &tripOut.StartPoint.Longitude,
+		&tripOut.EndPoint.Latitude, &tripOut.EndPoint.Longitude,
+		&tripOut.Price, &tripOut.Status, &tripOut.StartedAt, &tripOut.FinishedAt)
 
 	if err != nil {
-		return domain.Trip{}, fmt.Errorf("scan trip: %w", err)
+		return trip.Trip{}, fmt.Errorf("scan trip: %w", err)
 	}
-	return trip, nil
+	return tripOut, nil
 }

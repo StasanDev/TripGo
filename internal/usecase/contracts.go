@@ -4,18 +4,18 @@ import (
 	"context"
 	"time"
 
-	"github.com/StasanDev/avitoLabs/internal/domain"
+	"github.com/StasanDev/avitoLabs/internal/domain/trip"
 	"github.com/google/uuid"
 )
 
 type tripRepository interface {
-	CreateTrip(ctx context.Context, trip domain.Trip) error
-	GetTrip(ctx context.Context, id uuid.UUID) (domain.Trip, error)
-	FinishTrip(ctx context.Context, id uuid.UUID, at time.Time) (domain.Trip, error)
+	CreateTrip(ctx context.Context, trip trip.Trip) error
+	GetTrip(ctx context.Context, id uuid.UUID) (trip.Trip, error)
+	FinishTrip(ctx context.Context, id uuid.UUID, at time.Time) (trip.Trip, error)
 }
 
 type tripStatusHistoryRepository interface {
-	AddInTripHistory(ctx context.Context, history domain.TripStatusHistory) error
+	AddInTripHistory(ctx context.Context, history trip.TripStatusHistory) error
 }
 
 type TxManager interface {
@@ -25,6 +25,6 @@ type TxManager interface {
 type idempotencyRepository interface {
 	ReserveOrGet(
 		ctx context.Context,
-		record domain.IdempotencyRecord,
-	) (existing domain.IdempotencyRecord, reserved bool, err error)
+		record trip.IdempotencyRecord,
+	) (existing trip.IdempotencyRecord, reserved bool, err error)
 }

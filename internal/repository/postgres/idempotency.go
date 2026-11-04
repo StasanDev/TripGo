@@ -7,7 +7,7 @@ import (
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/StasanDev/avitoLabs/internal/domain"
+	"github.com/StasanDev/avitoLabs/internal/domain/trip"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -32,8 +32,8 @@ func NewIdempotencyRepository(pool *pgxpool.Pool, queryTimeout time.Duration) *I
 
 func (r *IdempotencyRepository) ReserveOrGet(
 	ctx context.Context,
-	record domain.IdempotencyRecord,
-) (domain.IdempotencyRecord, bool, error) {
+	record trip.IdempotencyRecord,
+) (trip.IdempotencyRecord, bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, r.queryTimeout)
 	defer cancel()
 
@@ -50,19 +50,19 @@ func (r *IdempotencyRepository) ReserveOrGet(
 		RETURNING idempotency_key, trip_id, request_hash, expires_at
 		`).PlaceholderFormat(sq.Dollar).ToSql()
 	if err != nil {
-		return domain.IdempotencyRecord{}, false, fmt.Errorf("build reserve idempotency key: %w", err)
+		return trip.IdempotencyRecord{}, false, fmt.Errorf("build reserve idempotency key: %w", err)
 	}
 
-	var reservedRecord domain.IdempotencyRecord
+	var reservedRecord trip.IdempotencyRecord
 	err = r.executor(ctx).QueryRow(ctx, reserveQuery, reserveArgs...).Scan(
-		&reservedRecord.Key,&reservedRecord.TripID,
-		&reservedRecord.RequestHash,&reservedRecord.ExpiresAt,
+		&reservedRecord.Key, &reservedRecord.TripID,
+		&reservedRecord.RequestHash, &reservedRecord.ExpiresAt,
 	)
 	if err == nil {
 		return reservedRecord, true, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return domain.IdempotencyRecord{}, false, fmt.Errorf("reserve idempotency key: %w", err)
+		return trip.IdempotencyRecord{}, false, fmt.Errorf("reserve idempotency key: %w", err)
 	}
 
 	getQuery, getArgs, err := sq.
@@ -72,17 +72,17 @@ func (r *IdempotencyRepository) ReserveOrGet(
 		PlaceholderFormat(sq.Dollar).
 		ToSql()
 	if err != nil {
-		return domain.IdempotencyRecord{}, false, fmt.Errorf("build get idempotency key: %w", err)
+		return trip.IdempotencyRecord{}, false, fmt.Errorf("build get idempotency key: %w", err)
 	}
 
-	var existing domain.IdempotencyRecord
+	var existing trip.IdempotencyRecord
 	if err := r.executor(ctx).QueryRow(ctx, getQuery, getArgs...).Scan(
 		&existing.Key,
 		&existing.TripID,
 		&existing.RequestHash,
 		&existing.ExpiresAt,
 	); err != nil {
-		return domain.IdempotencyRecord{}, false, fmt.Errorf("get idempotency key: %w", err)
+		return trip.IdempotencyRecord{}, false, fmt.Errorf("get idempotency key: %w", err)
 	}
 
 	return existing, false, nil

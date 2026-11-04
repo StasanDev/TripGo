@@ -35,7 +35,7 @@ test:
 generate:
 	@mkdir -p "$(dir $(OPENAPI_OUTPUT))"
 	go tool oapi-codegen \
-		-generate types,chi-server \
+		-generate types,chi-server,spec \
 		-include-operation-ids $(OPENAPI_OPERATIONS) \
 		-package api \
 		-o "$(OPENAPI_OUTPUT)" \

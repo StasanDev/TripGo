@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/StasanDev/avitoLabs/internal/domain"
+	"github.com/StasanDev/avitoLabs/internal/domain/trip"
 	"github.com/google/uuid"
 )
 
@@ -34,32 +34,32 @@ func NewTripService(
 	}
 }
 
-func (s *TripService) CreateTrip(ctx context.Context, tripInp domain.TripInput) (domain.Trip, bool, error) {
+func (s *TripService) CreateTrip(ctx context.Context, tripInp trip.TripInput) (trip.Trip, bool, error) {
 	now := time.Now().UTC()
-	trip := domain.Trip{
+	tripOut := trip.Trip{
 		TripInput:  tripInp,
 		ID:         uuid.New(),
-		Status:     domain.TripStatusActive,
+		Status:     trip.TripStatusActive,
 		StartedAt:  now,
 		FinishedAt: nil,
 	}
 
 	reason := "trip created"
-	history := domain.TripStatusHistory{
-		TripID:    trip.ID,
-		ToStatus:  domain.TripStatusActive,
+	history := trip.TripStatusHistory{
+		TripID:    tripOut.ID,
+		ToStatus:  trip.TripStatusActive,
 		Reason:    &reason,
 		ChangedAt: now,
 	}
 
-	resultTrip := trip
+	resultTrip := tripOut
 	replayed := false
 	err := s.txManager.Do(ctx, func(txCtx context.Context) error {
 		if tripInp.IdempotencyKey != nil {
-			idempotencyRecord := domain.IdempotencyRecord{
+			idempotencyRecord := trip.IdempotencyRecord{
 				Key:         *tripInp.IdempotencyKey,
 				RequestHash: tripInp.RequestHash,
-				TripID:      trip.ID,
+				TripID:      tripOut.ID,
 				ExpiresAt:   now.Add(s.idempotencyTTL),
 			}
 
@@ -69,7 +69,7 @@ func (s *TripService) CreateTrip(ctx context.Context, tripInp domain.TripInput) 
 			}
 			if !reserved {
 				if !bytes.Equal(existingRecord.RequestHash, tripInp.RequestHash) {
-					return domain.ErrIdempotencyConflict
+					return trip.ErrIdempotencyConflict
 				}
 
 				resultTrip, err = s.tripRepository.GetTrip(txCtx, existingRecord.TripID)
@@ -80,7 +80,7 @@ func (s *TripService) CreateTrip(ctx context.Context, tripInp domain.TripInput) 
 				return nil
 			}
 		}
-		if err := s.tripRepository.CreateTrip(txCtx, trip); err != nil {
+		if err := s.tripRepository.CreateTrip(txCtx, tripOut); err != nil {
 			return fmt.Errorf("create trip: %w", err)
 		}
 		if err := s.tripStatusHistoryRepository.AddInTripHistory(txCtx, history); err != nil {
@@ -89,33 +89,33 @@ func (s *TripService) CreateTrip(ctx context.Context, tripInp domain.TripInput) 
 		return nil
 	})
 	if err != nil {
-		return domain.Trip{}, false, err
+		return trip.Trip{}, false, err
 	}
 
 	return resultTrip, replayed, nil
 }
 
-func (s *TripService) GetTrip(ctx context.Context, id uuid.UUID) (domain.Trip, error) {
+func (s *TripService) GetTrip(ctx context.Context, id uuid.UUID) (trip.Trip, error) {
 	return s.tripRepository.GetTrip(ctx, id)
 }
 
-func (s *TripService) FinishTrip(ctx context.Context, id uuid.UUID) (domain.Trip, error) {
+func (s *TripService) FinishTrip(ctx context.Context, id uuid.UUID) (trip.Trip, error) {
 	finishAt := time.Now().UTC()
-	fromStatus := domain.TripStatusActive
+	fromStatus := trip.TripStatusActive
 	reason := "trip finished"
 
-	history := domain.TripStatusHistory{
+	history := trip.TripStatusHistory{
 		TripID:     id,
 		FromStatus: &fromStatus,
-		ToStatus:   domain.TripStatusCompleted,
+		ToStatus:   trip.TripStatusCompleted,
 		Reason:     &reason,
 		ChangedAt:  finishAt,
 	}
 
-	var trip domain.Trip
+	var tripOut trip.Trip
 	err := s.txManager.Do(ctx, func(txCtx context.Context) error {
 		var err error
-		trip, err = s.tripRepository.FinishTrip(txCtx, id, finishAt)
+		tripOut, err = s.tripRepository.FinishTrip(txCtx, id, finishAt)
 		if err != nil {
 			return fmt.Errorf("finish trip: %w", err)
 		}
@@ -126,8 +126,8 @@ func (s *TripService) FinishTrip(ctx context.Context, id uuid.UUID) (domain.Trip
 	})
 
 	if err != nil {
-		return domain.Trip{}, err
+		return trip.Trip{}, err
 	}
 
-	return trip, nil
+	return tripOut, nil
 }
