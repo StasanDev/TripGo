@@ -11,7 +11,8 @@ import (
 	"github.com/StasanDev/avitoLabs/internal/http/trip/create"
 	"github.com/StasanDev/avitoLabs/internal/http/trip/finish"
 	"github.com/StasanDev/avitoLabs/internal/http/trip/get"
-	database "github.com/StasanDev/avitoLabs/internal/infra/postgres"
+	database "github.com/StasanDev/avitoLabs/internal/infra/postgres/pool"
+	"github.com/StasanDev/avitoLabs/internal/infra/postgres/transaction/txmanager"
 	repo "github.com/StasanDev/avitoLabs/internal/repository/postgres"
 	createusecase "github.com/StasanDev/avitoLabs/internal/usecase/trip/create"
 	finishusecase "github.com/StasanDev/avitoLabs/internal/usecase/trip/finish"
@@ -36,7 +37,7 @@ func BuildApp(ctx context.Context, cfg *config.Config) (*App, error) {
 	tripRepository := repo.NewTripRepository(pool, cfg.DB.QueryTimeout)
 	tripStatusHistoryRepository := repo.NewTripStatusRepository(pool, cfg.DB.QueryTimeout)
 	idempotencyRepository := repo.NewIdempotencyRepository(pool, cfg.DB.QueryTimeout)
-	txManager := repo.NewTxManager(pool, cfg.DB.QueryTimeout)
+	txManager := txmanager.NewTxManager(pool, cfg.DB.QueryTimeout)
 	createService := createusecase.NewService(
 		tripRepository, txManager, idempotencyRepository,
 		tripStatusHistoryRepository, cfg.IdempotencyTTL,

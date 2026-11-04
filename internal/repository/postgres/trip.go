@@ -9,6 +9,7 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/StasanDev/avitoLabs/internal/domain/trip"
+	"github.com/StasanDev/avitoLabs/internal/infra/postgres/transaction/txkey"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -32,20 +33,8 @@ type TripRepository struct {
 	queryTimeout time.Duration
 }
 
-type TripStatusHistoryRepository struct {
-	pool         *pgxpool.Pool
-	queryTimeout time.Duration
-}
-
 func NewTripRepository(pool *pgxpool.Pool, queryTimeout time.Duration) *TripRepository {
 	return &TripRepository{
-		pool:         pool,
-		queryTimeout: queryTimeout,
-	}
-}
-
-func NewTripStatusRepository(pool *pgxpool.Pool, queryTimeout time.Duration) *TripStatusHistoryRepository {
-	return &TripStatusHistoryRepository{
 		pool:         pool,
 		queryTimeout: queryTimeout,
 	}
@@ -73,24 +62,6 @@ func (r *TripRepository) CreateTrip(ctx context.Context, tripInp trip.Trip) erro
 			return trip.ErrDriverBusy
 		}
 		return fmt.Errorf("insert trip: %w", err)
-	}
-
-	return nil
-}
-
-func (r *TripStatusHistoryRepository) AddInTripHistory(ctx context.Context, history trip.TripStatusHistory) error {
-	ctx, cancel := context.WithTimeout(ctx, r.queryTimeout)
-	defer cancel()
-
-	query, args, err := sq.Insert(tripStatusHistoryTable).Columns("trip_id", "from_status", "to_status", "reason", "changed_at").
-		Values(history.TripID, history.FromStatus, history.ToStatus,
-			history.Reason, history.ChangedAt).PlaceholderFormat(sq.Dollar).ToSql()
-	if err != nil {
-		return fmt.Errorf("build trip status history: %w", err)
-	}
-
-	if _, err := r.executor(ctx).Exec(ctx, query, args...); err != nil {
-		return fmt.Errorf("add in trip status history: %w", err)
 	}
 
 	return nil
@@ -152,14 +123,7 @@ func (r *TripRepository) FinishTrip(ctx context.Context, id uuid.UUID, at time.T
 }
 
 func (r *TripRepository) executor(ctx context.Context) DBTX {
-	if tx, ok := txFromContext(ctx); ok {
-		return tx
-	}
-	return r.pool
-}
-
-func (r *TripStatusHistoryRepository) executor(ctx context.Context) DBTX {
-	if tx, ok := txFromContext(ctx); ok {
+	if tx, ok := txkey.FromContext(ctx); ok {
 		return tx
 	}
 	return r.pool

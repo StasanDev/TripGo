@@ -1,15 +1,14 @@
-package repository
+package txmanager
 
 import (
 	"context"
 	"fmt"
 	"time"
 
+	"github.com/StasanDev/avitoLabs/internal/infra/postgres/transaction/txkey"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
-
-type txContextKey struct{}
 
 type TxManager struct {
 	pool         *pgxpool.Pool
@@ -24,7 +23,7 @@ func NewTxManager(pool *pgxpool.Pool, queryTimeout time.Duration) *TxManager {
 }
 
 func (m *TxManager) Do(ctx context.Context, fn func(ctx context.Context) error) error {
-	if _, ok := txFromContext(ctx); ok {
+	if _, ok := txkey.FromContext(ctx); ok {
 		return fn(ctx)
 	}
 
@@ -47,7 +46,7 @@ func (m *TxManager) Do(ctx context.Context, fn func(ctx context.Context) error) 
 		}
 	}()
 
-	ctx = context.WithValue(ctx, txContextKey{}, tx)
+	ctx = txkey.WithContext(ctx, tx)
 
 	if err := fn(ctx); err != nil {
 		return err
@@ -60,9 +59,4 @@ func (m *TxManager) Do(ctx context.Context, fn func(ctx context.Context) error) 
 	}
 	committed = true
 	return nil
-}
-
-func txFromContext(ctx context.Context) (pgx.Tx, bool) {
-	tx, ok := ctx.Value(txContextKey{}).(pgx.Tx)
-	return tx, ok
 }

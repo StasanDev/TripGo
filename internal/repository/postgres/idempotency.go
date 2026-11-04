@@ -8,6 +8,7 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/StasanDev/avitoLabs/internal/domain/trip"
+	"github.com/StasanDev/avitoLabs/internal/infra/postgres/transaction/txkey"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -89,7 +90,7 @@ func (r *IdempotencyRepository) ReserveOrGet(
 }
 
 func (r *IdempotencyRepository) executor(ctx context.Context) DBTX {
-	if tx, ok := txFromContext(ctx); ok {
+	if tx, ok := txkey.FromContext(ctx); ok {
 		return tx
 	}
 	return r.pool

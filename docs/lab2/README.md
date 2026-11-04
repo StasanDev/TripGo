@@ -7,8 +7,9 @@
 
 Здесь фиксируются изменения и решения второй лабораторной по мере выполнения.
 Сейчас реализованы сборка приложения в контейнере, разделение HTTP-обработчиков
-и usecase по операциям, единый маппинг ошибок и валидация запросов по OpenAPI. Подключение
-логов `slog`, метрик и трейсов OpenTelemetry остаётся следующей частью работы.
+и usecase по операциям, выделение PostgreSQL-инфраструктуры, единый маппинг
+ошибок и валидация запросов по OpenAPI. Подключение логов `slog`, метрик и
+трейсов OpenTelemetry остаётся следующей частью работы.
 
 ## Запуск
 
@@ -52,8 +53,10 @@ curl -i http://localhost:8080/ready
 | `internal/http/response` | Запись JSON и Problem-ответов |
 | `internal/usecase/trip/create`, `get`, `finish` | Отдельные сценарии создания, получения и завершения поездки |
 | `internal/domain/trip` | Доменные типы и ошибки поездок |
-| `internal/repository/postgres` | SQL-запросы и менеджер транзакций |
-| `internal/infra/postgres` | Настройка и создание пула PostgreSQL |
+| `internal/repository/postgres` | SQL-запросы через транзакцию из контекста или пул |
+| `internal/infra/postgres/pool` | Настройка и создание пула PostgreSQL |
+| `internal/infra/postgres/transaction/txmanager` | Открытие, фиксация и откат транзакций |
+| `internal/infra/postgres/transaction/txkey` | Запись и чтение транзакции в контексте |
 | `internal/generated` | Типы, серверный интерфейс и встроенная спецификация OpenAPI |
 
 HTTP-обработчики вызывают usecase через интерфейсы, объявленные в своём
@@ -66,13 +69,52 @@ Usecase объявляет собственные интерфейсы репо�
 
 ### Сборка приложения
 
-[BuildApp](../../internal/container/build.go) создаёт пул PostgreSQL,
-репозитории, менеджер транзакций и три отдельных usecase: `create.Service`,
-`get.Service` и `finish.Service`. Каждый usecase передаётся своему
+[BuildApp](../../internal/container/build.go) создаёт пул через `NewPostgresPool`
+из `infra/postgres/pool`, репозитории, менеджер через `txmanager.NewTxManager`
+и три отдельных usecase: `create.Service`, `get.Service` и `finish.Service`.
+Каждый usecase передаётся своему
 HTTP-обработчику напрямую. Общий HTTP-хендлер получает обработчики операций,
 пул через интерфейс `pinger` и таймаут readiness из `DATABASE_QUERY_TIMEOUT`.
 Конкретные реализации связываются вручную в контейнере. `main` читает конфиг,
 запускает приложение и вызывает завершение по сигналу.
+
+### Разделение PostgreSQL-кода
+
+Создание и настройка пула находятся в
+[infra/postgres/pool](../../internal/infra/postgres/pool/pool.go). При создании
+пула применяются настройки из конфигурации и выполняется стартовый `Ping`.
+Пул создаётся один раз в контейнере и передаётся репозиториям и менеджеру
+транзакций.
+
+SQL-код остаётся в пакете `internal/repository/postgres` и разделён по файлам:
+
+| Файл | Ответственность |
+|---|---|
+| [trip.go](../../internal/repository/postgres/trip.go) | Создание, получение и завершение поездки, преобразование строки БД в доменную модель |
+| [history.go](../../internal/repository/postgres/history.go) | Запись истории изменения статусов |
+| [idempotency.go](../../internal/repository/postgres/idempotency.go) | Резервирование и чтение ключей идемпотентности |
+| [db.go](../../internal/repository/postgres/db.go) | Общий интерфейс `DBTX` для выполнения SQL через пул или транзакцию |
+
+### Передача транзакции через контекст
+
+Менеджер транзакций находится в
+[transaction/txmanager](../../internal/infra/postgres/transaction/txmanager/transaction.go).
+Он открывает транзакцию, выполняет callback и фиксирует изменения при успехе.
+При ошибке или панике выполняется откат. Вложенный `Do` переиспользует текущую
+транзакцию. Откат использует отдельный ограниченный по времени контекст,
+сохраняющий работоспособность после отмены исходного запроса.
+
+Хранение транзакции в контексте выделено в отдельный пакет
+[transaction/txkey](../../internal/infra/postgres/transaction/txkey/key.go).
+Менеджер вызывает `txkey.WithContext`, а репозитории извлекают `pgx.Tx` через
+`txkey.FromContext`. Если транзакция есть, SQL выполняется через неё;
+в остальных случаях используется пул. Тип ключа приватный и общий для
+операций записи и чтения.
+
+Для работы с транзакцией репозитории импортируют `txkey`, без зависимости от
+пакета `txmanager`. Менеджер также использует `txkey` для записи и чтения
+транзакции. Он создаётся в контейнере и передаётся usecase через их интерфейсы
+`txManager` с методом `Do`.
 
 ### Пакет на HTTP-операцию
 
