@@ -3,9 +3,17 @@ package trip
 import "errors"
 
 var (
-	ErrInvalidInput        = errors.New("invalid trip input")
 	ErrDriverBusy          = errors.New("driver already has an active trip")
 	ErrTripNotFound        = errors.New("trip not found")
 	ErrTripCompleted       = errors.New("trip is completed")
 	ErrIdempotencyConflict = errors.New("idempotency key conflict")
 )
+
+type ValidationError struct {
+	Field  string
+	Reason string
+}
+
+func (e *ValidationError) Error() string {
+	return e.Field + ": " + e.Reason
+}
