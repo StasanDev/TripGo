@@ -15,7 +15,7 @@ import (
 	"github.com/StasanDev/avitoLabs/internal/http/trip/get"
 	database "github.com/StasanDev/avitoLabs/internal/infra/postgres/pool"
 	"github.com/StasanDev/avitoLabs/internal/infra/postgres/transaction/txmanager"
-	repo "github.com/StasanDev/avitoLabs/internal/repository/postgres"
+	repo "github.com/StasanDev/avitoLabs/internal/repository/postgres/trip"
 	createusecase "github.com/StasanDev/avitoLabs/internal/usecase/trip/create"
 	finishusecase "github.com/StasanDev/avitoLabs/internal/usecase/trip/finish"
 	getusecase "github.com/StasanDev/avitoLabs/internal/usecase/trip/get"

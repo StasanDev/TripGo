@@ -9,7 +9,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/StasanDev/avitoLabs/internal/domain/trip"
-	"github.com/StasanDev/avitoLabs/internal/infra/postgres/transaction/txkey"
 )
 
 type TripStatusHistoryRepository struct {
@@ -35,16 +34,9 @@ func (r *TripStatusHistoryRepository) AddInTripHistory(ctx context.Context, hist
 		return fmt.Errorf("build trip status history: %w", err)
 	}
 
-	if _, err := r.executor(ctx).Exec(ctx, query, args...); err != nil {
+	if _, err := executor(ctx, r.pool).Exec(ctx, query, args...); err != nil {
 		return fmt.Errorf("add in trip status history: %w", err)
 	}
 
 	return nil
-}
-
-func (r *TripStatusHistoryRepository) executor(ctx context.Context) dbtx {
-	if tx, ok := txkey.FromContext(ctx); ok {
-		return tx
-	}
-	return r.pool
 }

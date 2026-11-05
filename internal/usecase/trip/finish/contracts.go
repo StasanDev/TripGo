@@ -1,7 +1,5 @@
 //go:generate go tool mockgen -source ${GOFILE} -destination mocks_test.go -package ${GOPACKAGE}_test
 
-//go:generate go tool mockgen -source=$GOFILE -destination=mocks_test.go -package=finish_test
-
 package finish
 
 import (

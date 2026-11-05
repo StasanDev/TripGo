@@ -11,7 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/StasanDev/avitoLabs/internal/domain/trip"
-	"github.com/StasanDev/avitoLabs/internal/infra/postgres/transaction/txkey"
 )
 
 const idempotencyKeysTable = "trip_idempotency_keys"
@@ -56,7 +55,7 @@ func (r *IdempotencyRepository) ReserveOrGet(
 	}
 
 	var reservedRecord trip.IdempotencyRecord
-	err = r.executor(ctx).QueryRow(ctx, reserveQuery, reserveArgs...).Scan(
+	err = executor(ctx, r.pool).QueryRow(ctx, reserveQuery, reserveArgs...).Scan(
 		&reservedRecord.Key, &reservedRecord.TripID,
 		&reservedRecord.RequestHash, &reservedRecord.ExpiresAt,
 	)
@@ -78,7 +77,7 @@ func (r *IdempotencyRepository) ReserveOrGet(
 	}
 
 	var existing trip.IdempotencyRecord
-	if err := r.executor(ctx).QueryRow(ctx, getQuery, getArgs...).Scan(
+	if err := executor(ctx, r.pool).QueryRow(ctx, getQuery, getArgs...).Scan(
 		&existing.Key,
 		&existing.TripID,
 		&existing.RequestHash,
@@ -88,11 +87,4 @@ func (r *IdempotencyRepository) ReserveOrGet(
 	}
 
 	return existing, false, nil
-}
-
-func (r *IdempotencyRepository) executor(ctx context.Context) dbtx {
-	if tx, ok := txkey.FromContext(ctx); ok {
-		return tx
-	}
-	return r.pool
 }
