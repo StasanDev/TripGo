@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/StasanDev/avitoLabs/internal/infra/postgres/transaction/txkey"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/StasanDev/avitoLabs/internal/infra/postgres/transaction/txkey"
 )
 
 type TxManager struct {

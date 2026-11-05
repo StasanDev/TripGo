@@ -5,8 +5,9 @@ package create
 import (
 	"context"
 
-	"github.com/StasanDev/avitoLabs/internal/domain/trip"
 	"github.com/google/uuid"
+
+	"github.com/StasanDev/avitoLabs/internal/domain/trip"
 )
 
 type (

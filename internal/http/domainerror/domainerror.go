@@ -43,11 +43,11 @@ func InvalidRequest(detail string) api.Problem {
 	return problem(http.StatusBadRequest, "invalid_request", "Invalid request", detail)
 }
 
-func problem(status int, code, title, detail string) api.Problem {
+func problem(status int32, code, title, detail string) api.Problem {
 	return api.Problem{
 		Type:   "https://tripgo.example/problems/" + strings.ReplaceAll(code, "_", "-"),
 		Title:  title,
-		Status: int32(status),
+		Status: status,
 		Detail: &detail,
 		Code:   code,
 	}

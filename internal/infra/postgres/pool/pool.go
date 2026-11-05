@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/StasanDev/avitoLabs/internal/config"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/StasanDev/avitoLabs/internal/config"
 )
 
 func NewPostgresPool(

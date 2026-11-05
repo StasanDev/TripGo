@@ -21,7 +21,7 @@ OPENAPI_SPEC = contracts/openapi/trip-service.openapi.yaml
 OPENAPI_OUTPUT = internal/generated/api.gen.go
 OPENAPI_OPERATIONS = createTrip,getTrip,finishTrip,health,ready
 
-.PHONY: build run test generate migrate migrate-down migrate-status 
+.PHONY: build run test lint generate migrate migrate-down migrate-status
 
 build:
 	go build ./...
@@ -32,6 +32,9 @@ run:
 test:
 	go test -race ./...
 
+lint:
+	golangci-lint run --config .golangci.yml
+
 generate:
 	@mkdir -p "$(dir $(OPENAPI_OUTPUT))"
 	go tool oapi-codegen \
@@ -40,6 +43,7 @@ generate:
 		-package api \
 		-o "$(OPENAPI_OUTPUT)" \
 		"$(OPENAPI_SPEC)"
+	go generate ./...
 
 migrate:
 	go tool goose -dir "$(MIGRATIONS_DIR)" "$(GOOSE_DRIVER)" "$(DATABASE_URL)" up

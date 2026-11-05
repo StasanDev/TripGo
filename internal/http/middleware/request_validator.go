@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/getkin/kin-openapi/openapi3filter"
+	oapimiddleware "github.com/oapi-codegen/nethttp-middleware"
+
 	api "github.com/StasanDev/avitoLabs/internal/generated"
 	"github.com/StasanDev/avitoLabs/internal/http/domainerror"
 	"github.com/StasanDev/avitoLabs/internal/http/response"
-	"github.com/getkin/kin-openapi/openapi3filter"
-	oapimiddleware "github.com/oapi-codegen/nethttp-middleware"
 )
 
 func RequestValidator() (func(http.Handler) http.Handler, error) {

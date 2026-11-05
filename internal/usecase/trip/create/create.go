@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/StasanDev/avitoLabs/internal/domain/trip"
 	"github.com/google/uuid"
+
+	"github.com/StasanDev/avitoLabs/internal/domain/trip"
 )
 
 func (s *Service) CreateTrip(ctx context.Context, tripInp trip.TripInput) (trip.Trip, bool, error) {

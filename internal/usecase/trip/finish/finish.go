@@ -5,14 +5,16 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/StasanDev/avitoLabs/internal/domain/trip"
 	"github.com/google/uuid"
+
+	"github.com/StasanDev/avitoLabs/internal/domain/trip"
 )
 
 func (s *Service) FinishTrip(ctx context.Context, id uuid.UUID) (trip.Trip, error) {
 	var tripOut trip.Trip
 	err := s.txManager.Do(ctx, func(txCtx context.Context) error {
-		tripOut, err := s.tripRepository.GetTrip(txCtx, id)
+		var err error
+		tripOut, err = s.tripRepository.GetTrip(txCtx, id)
 		if err != nil {
 			return fmt.Errorf("get trip to finish: %w", err)
 		}
@@ -40,7 +42,6 @@ func (s *Service) FinishTrip(ctx context.Context, id uuid.UUID) (trip.Trip, erro
 		}
 		return nil
 	})
-
 	if err != nil {
 		return trip.Trip{}, err
 	}

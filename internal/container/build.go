@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/StasanDev/avitoLabs/internal/config"
 	httptransport "github.com/StasanDev/avitoLabs/internal/http"
 	"github.com/StasanDev/avitoLabs/internal/http/trip/create"
@@ -17,7 +19,6 @@ import (
 	createusecase "github.com/StasanDev/avitoLabs/internal/usecase/trip/create"
 	finishusecase "github.com/StasanDev/avitoLabs/internal/usecase/trip/finish"
 	getusecase "github.com/StasanDev/avitoLabs/internal/usecase/trip/get"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type App struct {

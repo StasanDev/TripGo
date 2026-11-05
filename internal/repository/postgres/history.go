@@ -6,9 +6,10 @@ import (
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/StasanDev/avitoLabs/internal/domain/trip"
 	"github.com/StasanDev/avitoLabs/internal/infra/postgres/transaction/txkey"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type TripStatusHistoryRepository struct {
@@ -41,7 +42,7 @@ func (r *TripStatusHistoryRepository) AddInTripHistory(ctx context.Context, hist
 	return nil
 }
 
-func (r *TripStatusHistoryRepository) executor(ctx context.Context) DBTX {
+func (r *TripStatusHistoryRepository) executor(ctx context.Context) dbtx {
 	if tx, ok := txkey.FromContext(ctx); ok {
 		return tx
 	}

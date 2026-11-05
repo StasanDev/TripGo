@@ -8,17 +8,18 @@ import (
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/StasanDev/avitoLabs/internal/domain/trip"
-	"github.com/StasanDev/avitoLabs/internal/infra/postgres/transaction/txkey"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/StasanDev/avitoLabs/internal/domain/trip"
+	"github.com/StasanDev/avitoLabs/internal/infra/postgres/transaction/txkey"
 )
 
 var queryTripCols = []string{
 	"id", "user_id", "driver_id", "start_latitude", "start_longitude",
-	"end_latitude", "end_longitude", "price", "status",
+	"end_latitude", "end_longitude", "price", tripStatusColumn,
 	"started_at", "finished_at",
 }
 
@@ -26,6 +27,7 @@ const (
 	tripsTable              = "trips"
 	tripStatusHistoryTable  = "trip_status_history"
 	driverActiveUniqueIndex = "trips_driver_active_uidx"
+	tripStatusColumn        = "status"
 )
 
 type TripRepository struct {
@@ -92,12 +94,12 @@ func (r *TripRepository) FinishTrip(ctx context.Context, id uuid.UUID, at time.T
 	defer cancel()
 
 	query, args, err := sq.Update(tripsTable).SetMap(map[string]interface{}{
-		"status":      trip.TripStatusCompleted,
-		"finished_at": at,
-		"updated_at":  at,
+		tripStatusColumn: trip.TripStatusCompleted,
+		"finished_at":    at,
+		"updated_at":     at,
 	}).Where(sq.Eq{
-		"id":     id,
-		"status": trip.TripStatusActive,
+		"id":             id,
+		tripStatusColumn: trip.TripStatusActive,
 	}).Suffix("RETURNING " + strings.Join(queryTripCols, ", ")).
 		PlaceholderFormat(sq.Dollar).ToSql()
 	if err != nil {
@@ -122,7 +124,7 @@ func (r *TripRepository) FinishTrip(ctx context.Context, id uuid.UUID, at time.T
 	return tripOut, nil
 }
 
-func (r *TripRepository) executor(ctx context.Context) DBTX {
+func (r *TripRepository) executor(ctx context.Context) dbtx {
 	if tx, ok := txkey.FromContext(ctx); ok {
 		return tx
 	}
@@ -135,7 +137,6 @@ func scanTrip(row pgx.Row) (trip.Trip, error) {
 		&tripOut.StartPoint.Latitude, &tripOut.StartPoint.Longitude,
 		&tripOut.EndPoint.Latitude, &tripOut.EndPoint.Longitude,
 		&tripOut.Price, &tripOut.Status, &tripOut.StartedAt, &tripOut.FinishedAt)
-
 	if err != nil {
 		return trip.Trip{}, fmt.Errorf("scan trip: %w", err)
 	}
