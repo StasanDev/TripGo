@@ -29,14 +29,12 @@ func (s *Service) FinishTrip(ctx context.Context, id uuid.UUID) (trip.Trip, erro
 			return fmt.Errorf("finish trip: %w", err)
 		}
 
-		reason := "trip finished"
-		history := trip.TripStatusHistory{
-			TripID:     tripOut.ID,
-			FromStatus: &fromStatus,
-			ToStatus:   tripOut.Status,
-			Reason:     &reason,
-			ChangedAt:  *tripOut.FinishedAt,
-		}
+		history := trip.NewTripStatusHistory(
+			tripOut,
+			&fromStatus,
+			"trip finished",
+			*tripOut.FinishedAt,
+		)
 		if err := s.tripStatusHistoryRepository.AddInTripHistory(txCtx, history); err != nil {
 			return fmt.Errorf("add finished trip status history: %w", err)
 		}

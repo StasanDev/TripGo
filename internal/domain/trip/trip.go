@@ -36,10 +36,16 @@ type Coordinates struct {
 	Longitude float64
 }
 
-type TripStatusHistory struct {
-	TripID     uuid.UUID
-	FromStatus *TripStatus
-	ToStatus   TripStatus
-	Reason     *string
-	ChangedAt  time.Time
+func NewTrip(input TripInput, id uuid.UUID, startedAt time.Time) (Trip, error) {
+	if err := input.Validate(); err != nil {
+		return Trip{}, err
+	}
+
+	return Trip{
+		TripInput:  input,
+		ID:         id,
+		Status:     TripStatusActive,
+		StartedAt:  startedAt,
+		FinishedAt: nil,
+	}, nil
 }

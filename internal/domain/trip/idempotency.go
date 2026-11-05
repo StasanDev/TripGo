@@ -12,3 +12,17 @@ type IdempotencyRecord struct {
 	TripID      uuid.UUID
 	ExpiresAt   time.Time
 }
+
+func NewIdempotencyRecord(
+	key uuid.UUID,
+	requestHash []byte,
+	tripID uuid.UUID,
+	expiresAt time.Time,
+) IdempotencyRecord {
+	return IdempotencyRecord{
+		Key:         key,
+		RequestHash: requestHash,
+		TripID:      tripID,
+		ExpiresAt:   expiresAt,
+	}
+}

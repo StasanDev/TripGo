@@ -12,37 +12,24 @@ import (
 )
 
 func (s *Service) CreateTrip(ctx context.Context, tripInp trip.TripInput) (trip.Trip, bool, error) {
-	if err := tripInp.Validate(); err != nil {
-		return trip.Trip{}, false, fmt.Errorf("validate trip: %w", err)
-	}
-
 	now := time.Now().UTC()
-	tripOut := trip.Trip{
-		TripInput:  tripInp,
-		ID:         uuid.New(),
-		Status:     trip.TripStatusActive,
-		StartedAt:  now,
-		FinishedAt: nil,
+	tripOut, err := trip.NewTrip(tripInp, uuid.New(), now)
+	if err != nil {
+		return trip.Trip{}, false, fmt.Errorf("create trip: %w", err)
 	}
 
-	reason := "trip created"
-	history := trip.TripStatusHistory{
-		TripID:    tripOut.ID,
-		ToStatus:  trip.TripStatusActive,
-		Reason:    &reason,
-		ChangedAt: now,
-	}
+	history := trip.NewTripStatusHistory(tripOut, nil, "trip created", tripOut.StartedAt)
 
 	resultTrip := tripOut
 	replayed := false
-	err := s.txManager.Do(ctx, func(txCtx context.Context) error {
+	err = s.txManager.Do(ctx, func(txCtx context.Context) error {
 		if tripInp.IdempotencyKey != nil {
-			idempotencyRecord := trip.IdempotencyRecord{
-				Key:         *tripInp.IdempotencyKey,
-				RequestHash: tripInp.RequestHash,
-				TripID:      tripOut.ID,
-				ExpiresAt:   now.Add(s.idempotencyTTL),
-			}
+			idempotencyRecord := trip.NewIdempotencyRecord(
+				*tripInp.IdempotencyKey,
+				tripInp.RequestHash,
+				tripOut.ID,
+				tripOut.StartedAt.Add(s.idempotencyTTL),
+			)
 
 			existingRecord, reserved, err := s.idempotencyRepository.ReserveOrGet(txCtx, idempotencyRecord)
 			if err != nil {
