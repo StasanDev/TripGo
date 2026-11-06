@@ -48,7 +48,7 @@ func TestFinishTripSuccess(t *testing.T) {
 			assert.Equal(t, trip.TripStatusActive, *history.FromStatus)
 			assert.Equal(t, trip.TripStatusCompleted, history.ToStatus)
 			require.NotNil(t, history.Reason)
-			assert.Equal(t, "trip finished", *history.Reason)
+			assert.Equal(t, trip.TripFinishedReason, *history.Reason)
 			require.NotNil(t, persistedTrip.FinishedAt)
 			assert.Equal(t, *persistedTrip.FinishedAt, history.ChangedAt)
 			return nil

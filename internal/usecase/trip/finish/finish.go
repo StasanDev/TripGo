@@ -32,7 +32,7 @@ func (s *Service) FinishTrip(ctx context.Context, id uuid.UUID) (trip.Trip, erro
 		history := trip.NewTripStatusHistory(
 			tripOut,
 			&fromStatus,
-			"trip finished",
+			trip.TripFinishedReason,
 			*tripOut.FinishedAt,
 		)
 		if err := s.tripStatusHistoryRepository.AddInTripHistory(txCtx, history); err != nil {

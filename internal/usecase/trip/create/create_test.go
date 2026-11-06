@@ -276,7 +276,7 @@ func expectTripPersistence(
 			assert.Nil(t, history.FromStatus)
 			assert.Equal(t, savedTrip.Status, history.ToStatus)
 			require.NotNil(t, history.Reason)
-			assert.Equal(t, "trip created", *history.Reason)
+			assert.Equal(t, trip.TripCreatedReason, *history.Reason)
 			assert.Equal(t, savedTrip.StartedAt, history.ChangedAt)
 			return nil
 		})

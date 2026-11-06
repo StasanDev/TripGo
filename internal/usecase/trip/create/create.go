@@ -18,7 +18,7 @@ func (s *Service) CreateTrip(ctx context.Context, tripInp trip.TripInput) (trip.
 		return trip.Trip{}, false, fmt.Errorf("create trip: %w", err)
 	}
 
-	history := trip.NewTripStatusHistory(tripOut, nil, "trip created", tripOut.StartedAt)
+	history := trip.NewTripStatusHistory(tripOut, nil, trip.TripCreatedReason, tripOut.StartedAt)
 
 	resultTrip := tripOut
 	replayed := false

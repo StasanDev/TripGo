@@ -6,6 +6,11 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	TripCreatedReason  = "trip created"
+	TripFinishedReason = "trip finished"
+)
+
 type TripStatusHistory struct {
 	TripID     uuid.UUID
 	FromStatus *TripStatus
@@ -13,7 +18,6 @@ type TripStatusHistory struct {
 	Reason     *string
 	ChangedAt  time.Time
 }
-
 
 func NewTripStatusHistory(
 	tripModel Trip,
