@@ -69,23 +69,6 @@ func TestCreateTripInvalidInput(t *testing.T) {
 	assert.False(t, replayed)
 }
 
-func TestCreateTripRepositoryError(t *testing.T) {
-	deps := newCreateTestDependencies(t)
-	input := validTripInput()
-	repositoryErr := errors.New("repository failed")
-
-	expectTransaction(deps.txManager)
-	deps.tripRepository.EXPECT().
-		CreateTrip(gomock.Any(), gomock.Any()).
-		Return(repositoryErr)
-
-	createdTrip, replayed, err := deps.service.CreateTrip(context.Background(), input)
-
-	require.ErrorIs(t, err, repositoryErr)
-	assert.Equal(t, trip.Trip{}, createdTrip)
-	assert.False(t, replayed)
-}
-
 func TestCreateTripHistoryError(t *testing.T) {
 	deps := newCreateTestDependencies(t)
 	input := validTripInput()

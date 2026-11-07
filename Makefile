@@ -20,8 +20,11 @@ MIGRATIONS_DIR = migrations
 OPENAPI_SPEC = contracts/openapi/trip-service.openapi.yaml
 OPENAPI_OUTPUT = internal/generated/api.gen.go
 OPENAPI_OPERATIONS = createTrip,getTrip,finishTrip,health,ready
+COVERAGE_FILE = coverage.out
+COVERAGE_PACKAGES = ./internal/domain/... ./internal/usecase/...
+INTEGRATION_PACKAGES = ./internal/repository/postgres/...
 
-.PHONY: build run test lint generate migrate migrate-down migrate-status
+.PHONY: build run test test-integration lint generate migrate migrate-down migrate-status
 
 build:
 	go build ./...
@@ -30,7 +33,12 @@ run:
 	go run ./cmd/trip-service
 
 test:
-	go test -race ./...
+	go test -race -count=2 ./...
+	go test -race -covermode=atomic -coverprofile=$(COVERAGE_FILE) $(COVERAGE_PACKAGES)
+	go tool cover -func=$(COVERAGE_FILE)
+
+test-integration:
+	go test -race -count=2 -tags=integration $(INTEGRATION_PACKAGES)
 
 lint:
 	golangci-lint run --config .golangci.yml

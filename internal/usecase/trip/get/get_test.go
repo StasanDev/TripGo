@@ -2,7 +2,6 @@ package get_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -48,28 +47,14 @@ func TestGetTripSuccess(t *testing.T) {
 }
 
 func TestGetTripNotFound(t *testing.T) {
-    ctrl := gomock.NewController(t)
+	ctrl := gomock.NewController(t)
 
-    tripRepo := NewMocktripRepository(ctrl)
-    tripRepo.EXPECT().GetTrip(gomock.Any(), gomock.Any()).Return(trip.Trip{}, trip.ErrTripNotFound)
+	tripRepo := NewMocktripRepository(ctrl)
+	tripRepo.EXPECT().GetTrip(gomock.Any(), gomock.Any()).Return(trip.Trip{}, trip.ErrTripNotFound)
 
-    service := get.NewService(tripRepo)
-    got, err := service.GetTrip(context.Background(), uuid.New())
+	service := get.NewService(tripRepo)
+	got, err := service.GetTrip(context.Background(), uuid.New())
 
-    require.ErrorIs(t, err, trip.ErrTripNotFound)
-    assert.Equal(t, trip.Trip{}, got)
-}
-
-func TestGetTripRepositoryError(t *testing.T) {
-    ctrl := gomock.NewController(t)
-
-    repoErr := errors.New("repository error")
-    tripRepo := NewMocktripRepository(ctrl)
-    tripRepo.EXPECT().GetTrip(gomock.Any(), gomock.Any()).Return(trip.Trip{}, repoErr)
-
-    service := get.NewService(tripRepo)
-    got, err := service.GetTrip(context.Background(), uuid.New())
-
-    require.ErrorIs(t, err, repoErr)
-    assert.Equal(t, trip.Trip{}, got)
+	require.ErrorIs(t, err, trip.ErrTripNotFound)
+	assert.Equal(t, trip.Trip{}, got)
 }

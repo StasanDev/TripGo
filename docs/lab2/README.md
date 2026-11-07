@@ -172,10 +172,16 @@ SQL-код остаётся в пакете `internal/repository/postgres` и р
 | Команда | Назначение |
 |---|---|
 | `make build` | Собрать все пакеты |
+| `make test` | Запустить unit-тесты с `-race` и вывести итоговое покрытие домена и usecase |
+| `make test-integration` | Запустить интеграционные тесты репозиториев с реальным PostgreSQL |
 | `make generate` | Обновить типы, серверный интерфейс и встроенную спецификацию OpenAPI |
 | `make migrate` | Применить миграции |
 | `make migrate-status` | Посмотреть состояние миграций |
 | `make run` | Запустить сервис |
+
+`make test-integration` требует запущенный Docker. Тесты используют
+`testcontainers-go`, самостоятельно поднимают временный PostgreSQL и отделены
+build-тегом `integration`.
 
 Сгенерированный файл `internal/generated/api.gen.go` обновляется через
 `make generate` и коммитится вместе с изменениями настроек генерации или
