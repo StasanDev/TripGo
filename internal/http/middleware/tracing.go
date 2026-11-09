@@ -18,7 +18,6 @@ func Tracing(tracerProvider trace.TracerProvider) func(http.Handler) http.Handle
 		tracedHandler := otelhttp.NewMiddleware(
 			"http.server",
 			otelhttp.WithTracerProvider(tracerProvider),
-			// HTTP metrics are collected by the separate Metrics middleware.
 			otelhttp.WithMeterProvider(noop.NewMeterProvider()),
 		)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			responseWriter := chimiddleware.NewWrapResponseWriter(w, r.ProtoMajor)

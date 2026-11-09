@@ -1,188 +1,276 @@
 # TripGo — лабораторная работа 2
 
-Архитектура, качество кода и наблюдаемость сервиса поездок. Требования находятся
-в [задании лабораторной](../../tasks/02-architecture-and-observability/README.md).
-Описание исходной функциональности, HTTP API и конфигурации — в
-[документации ЛР1](../lab1/README.md).
+Во второй лабораторной сервис поездок разделён на слои, покрыт unit- и
+интеграционными тестами и инструментирован через OpenTelemetry. HTTP-контракт и
+функциональность ЛР1 сохранены: сервис создаёт, возвращает и завершает поездки,
+поддерживает идемпотентное создание и хранит историю статусов.
 
-Здесь фиксируются изменения и решения второй лабораторной по мере выполнения.
-Сейчас реализованы сборка приложения в контейнере, разделение HTTP-обработчиков
-и usecase по операциям, выделение PostgreSQL-инфраструктуры, единый маппинг
-ошибок и валидация запросов по OpenAPI. Подключение логов `slog`, метрик и
-трейсов OpenTelemetry остаётся следующей частью работы.
+Требования находятся в [задании лабораторной](../../tasks/02-architecture-and-observability/README.md),
+а описание HTTP API — в [документации ЛР1](../lab1/README.md).
 
 ## Запуск
 
-Нужны Go `1.27.1`, GNU Make и окружение курса через `tripgoctl`. Все команды
-выполняются из корня репозитория.
-
-В [environment.toml](../../environment.toml) выбрана лабораторная работа 2 с
-компонентами `postgres` и `observability`:
+Нужны Go `1.27.1`, GNU Make, Docker и окружение курса через `tripgoctl`. Все
+команды выполняются из корня репозитория.
 
 ```bash
 tripgoctl cluster start       # один раз на машине
 tripgoctl environment start
 tripgoctl connect
 make migrate
-make run
+make run SERVICE_VERSION=local
 ```
 
-`tripgoctl` создаёт локальный `.env`, а `Makefile` экспортирует его переменные
-при запуске сервиса. Основные настройки перечислены в
-[.env.example](../../.env.example). Ссылки на Jaeger, Grafana и Prometheus
-выводит `tripgoctl connect`; отправка телеметрии из сервиса пока не подключена.
+`tripgoctl` создаёт локальный `.env`. Настройки и значения для самостоятельного
+запуска перечислены в [.env.example](../../.env.example). Адреса Jaeger,
+Grafana, Prometheus, PostgreSQL и OTLP endpoint выводит `tripgoctl connect`.
 
-При `HTTP_ADDR=:8080` проверки работоспособности доступны по адресам:
+Проверки процесса и доступности PostgreSQL:
 
 ```bash
 curl -i http://localhost:8080/health
 curl -i http://localhost:8080/ready
 ```
 
+Версия сервиса передаётся при сборке через `SERVICE_VERSION` и попадает в OTel
+resource как `service.version`:
+
+```bash
+make build SERVICE_VERSION=2.0.0
+```
+
+### Конфигурация observability
+
+| Настройка | Назначение |
+|---|---|
+| `LOG_LEVEL` | Минимальный уровень JSON-логов |
+| `OTEL_SERVICE_NAME` | Значение `service.name` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Адрес Collector |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | Протокол OTLP exporter |
+| `OTEL_RESOURCE_ATTRIBUTES` | Namespace, environment и другие resource attributes |
+| `OTEL_TRACES_SAMPLER` | Политика сэмплирования трейсов |
+| `OTEL_METRIC_EXPORT_INTERVAL` | Интервал экспорта метрик в миллисекундах |
+| `OTEL_METRIC_EXPORT_TIMEOUT` | Таймаут экспорта метрик в миллисекундах |
+| `SERVICE_VERSION` | Make/Docker build argument, записываемый через `ldflags` |
+
 ## Архитектура
+
+```mermaid
+flowchart LR
+    Main[cmd/trip-service] --> Config[config]
+    Main --> Container[container]
+    Container --> HTTP[http handlers]
+    Container --> UC[usecase]
+    Container --> Repo[repository/postgres]
+    Container --> Infra[infra]
+    HTTP -. local interface .-> UC
+    UC -. local interfaces .-> Repo
+    UC -. local interface .-> Tx[transaction manager]
+    HTTP --> Domain[domain/trip]
+    UC --> Domain
+    Repo --> Domain
+    Repo --> TxKey[transaction/txkey]
+    Infra --> OTel[OpenTelemetry]
+    Infra --> PG[(PostgreSQL)]
+```
+
+`cmd/trip-service` отвечает за загрузку конфигурации, создание логгера, запуск и
+graceful shutdown. Роль composition root выполняет `internal/container`: только
+там создаются конкретные репозитории, usecase, HTTP-обработчики и
+инфраструктурные зависимости. Такое разделение оставляет `main` коротким и
+сохраняет ручную сборку зависимостей без DI-фреймворка.
 
 | Пакет | Ответственность |
 |---|---|
-| `cmd/trip-service` | Чтение конфигурации, запуск приложения, ожидание сигнала остановки |
-| `internal/config` | Разбор и валидация переменных окружения |
-| `internal/container` | Создание и связывание зависимостей, запуск HTTP-сервера, освобождение ресурсов |
-| `internal/http` | Маршрутизация, адаптер к `api.ServerInterface`, проверки процесса и доступности PostgreSQL |
-| `internal/http/trip/create`, `get`, `finish` | Отдельные обработчики операций над поездкой |
-| `internal/http/middleware` | Проверка запросов по OpenAPI |
+| `internal/domain/trip` | Модели, конструкторы, валидация, переходы статусов и доменные ошибки |
+| `internal/usecase/trip/{create,get,finish}` | Сценарии приложения и границы транзакций |
+| `internal/http/trip/{create,get,finish}` | Разбор и формирование HTTP-запросов и ответов |
 | `internal/http/domainerror` | Единый перевод доменных ошибок в HTTP Problem |
-| `internal/http/response` | Запись JSON и Problem-ответов |
-| `internal/usecase/trip/create`, `get`, `finish` | Отдельные сценарии создания, получения и завершения поездки |
-| `internal/domain/trip` | Доменные типы и ошибки поездок |
-| `internal/repository/postgres` | SQL-запросы через транзакцию из контекста или пул |
-| `internal/infra/postgres/pool` | Настройка и создание пула PostgreSQL |
-| `internal/infra/postgres/transaction/txmanager` | Открытие, фиксация и откат транзакций |
-| `internal/infra/postgres/transaction/txkey` | Запись и чтение транзакции в контексте |
-| `internal/generated` | Типы, серверный интерфейс и встроенная спецификация OpenAPI |
+| `internal/http/middleware` | OpenAPI validation, Recover, Tracing, Logging и Metrics |
+| `internal/repository/postgres/trip` | SQL и преобразование строк PostgreSQL в доменные модели |
+| `internal/infra/postgres` | Пул, DB telemetry и менеджер транзакций |
+| `internal/infra/telemetry` | JSON-логгер, OTel resource, tracer/meter providers и бизнес-метрики |
+| `internal/container` | Создание и связывание конкретных реализаций |
+| `internal/generated` | Типы, серверный интерфейс и встроенная OpenAPI-спецификация |
 
-HTTP-обработчики вызывают usecase через интерфейсы, объявленные в своём
-`contract.go`. Каждый интерфейс содержит только метод своей операции.
-Usecase объявляет собственные интерфейсы репозиториев и менеджера транзакций.
-Домен содержит общие типы и ошибки; HTTP и PostgreSQL используют их при
-преобразовании запросов, ответов и данных БД.
+Зависимости направлены к домену. `domain` не импортирует HTTP, PostgreSQL или
+OpenTelemetry; `usecase` не зависит от transport и pgx; HTTP-обработчики не
+обращаются к репозиториям и инфраструктуре напрямую.
 
-## Решения
+### Интерфейсы
 
-### Сборка приложения
+Интерфейсы объявлены на стороне потребителя:
 
-[BuildApp](../../internal/container/build.go) создаёт пул через `NewPostgresPool`
-из `infra/postgres/pool`, репозитории, менеджер через `txmanager.NewTxManager`
-и три отдельных usecase: `create.Service`, `get.Service` и `finish.Service`.
-Каждый usecase передаётся своему
-HTTP-обработчику напрямую. Общий HTTP-хендлер получает обработчики операций,
-пул через интерфейс `pinger` и таймаут readiness из `DATABASE_QUERY_TIMEOUT`.
-Конкретные реализации связываются вручную в контейнере. `main` читает конфиг,
-запускает приложение и вызывает завершение по сигналу.
+- каждый HTTP-обработчик описывает нужный ему usecase в своём `contract.go`;
+- каждый usecase описывает репозитории, transaction manager и recorder в своём
+  `contracts.go`;
+- реализации репозиториев не публикуют общий широкий интерфейс хранилища.
 
-### Разделение PostgreSQL-кода
+Так обработчик можно тестировать мок-реализацией usecase, а usecase — моками
+репозиториев и менеджера транзакций. Добавление второго транспорта не требует
+менять домен и репозитории: новый адаптер вызывает те же usecase через свои
+локальные интерфейсы.
 
-Создание и настройка пула находятся в
-[infra/postgres/pool](../../internal/infra/postgres/pool/pool.go). При создании
-пула применяются настройки из конфигурации и выполняется стартовый `Ping`.
-Пул создаётся один раз в контейнере и передаётся репозиториям и менеджеру
-транзакций.
+## Принятые решения
 
-SQL-код остаётся в пакете `internal/repository/postgres` и разделён по файлам:
+### Домен и ошибки
 
-| Файл | Ответственность |
-|---|---|
-| [trip.go](../../internal/repository/postgres/trip.go) | Создание, получение и завершение поездки, преобразование строки БД в доменную модель |
-| [history.go](../../internal/repository/postgres/history.go) | Запись истории изменения статусов |
-| [idempotency.go](../../internal/repository/postgres/idempotency.go) | Резервирование и чтение ключей идемпотентности |
-| [db.go](../../internal/repository/postgres/db.go) | Общий интерфейс `DBTX` для выполнения SQL через пул или транзакцию |
+Создание `Trip`, `TripStatusHistory` и `IdempotencyRecord` выполняют доменные
+конструкторы. Метод `Trip.Finish` инкапсулирует допустимый переход
+`active → completed`. Валидация возвращает `ValidationError` с именем поля и
+причиной.
 
-### Передача транзакции через контекст
-
-Менеджер транзакций находится в
-[transaction/txmanager](../../internal/infra/postgres/transaction/txmanager/transaction.go).
-Он открывает транзакцию, выполняет callback и фиксирует изменения при успехе.
-При ошибке или панике выполняется откат. Вложенный `Do` переиспользует текущую
-транзакцию. Откат использует отдельный ограниченный по времени контекст,
-сохраняющий работоспособность после отмены исходного запроса.
-
-Хранение транзакции в контексте выделено в отдельный пакет
-[transaction/txkey](../../internal/infra/postgres/transaction/txkey/key.go).
-Менеджер вызывает `txkey.WithContext`, а репозитории извлекают `pgx.Tx` через
-`txkey.FromContext`. Если транзакция есть, SQL выполняется через неё;
-в остальных случаях используется пул. Тип ключа приватный и общий для
-операций записи и чтения.
-
-Для работы с транзакцией репозитории импортируют `txkey`, без зависимости от
-пакета `txmanager`. Менеджер также использует `txkey` для записи и чтения
-транзакции. Он создаётся в контейнере и передаётся usecase через их интерфейсы
-`txManager` с методом `Do`.
-
-### Пакет на HTTP-операцию
-
-Операции создания, получения и завершения поездки выделены в пакеты
-`http/trip/create`, `http/trip/get` и `http/trip/finish`. Зависимости передаются
-конструкторам через узкие неэкспортируемые интерфейсы в `contract.go`.
-Проверки `health` и `ready` находятся в общем HTTP-хендлере; обращение к БД
-требуется только `ready` и выполняется с таймаутом.
-
-[Общий Handler](../../internal/http/handler.go) делегирует вызовы обработчикам
-операций и реализует сгенерированный `api.ServerInterface`. Его совместимость
-с интерфейсом проверяется компилятором при передаче в `NewRouter`.
-Преобразование поездки в общий HTTP-формат находится в `http/trip/convert.go`.
-
-### Валидация запросов через OpenAPI
-
-Источник истины — [OpenAPI-контракт](../../contracts/openapi/trip-service.openapi.yaml).
-`make generate` создаёт типы, серверный интерфейс и встроенную спецификацию
-только для операций `createTrip`, `getTrip`, `finishTrip`, `health` и `ready`.
-Спецификация доступна через `api.GetSpec()`, поэтому сервису не требуется
-читать YAML-файл при запуске.
-
-[RequestValidator](../../internal/http/middleware/request_validator.go)
-подключает `OapiRequestValidatorWithOptions` к операциям роутера. Middleware
-проверяет обязательность полей, допустимость `null`, типы, диапазоны и запрет
-неизвестных свойств по схеме. Некорректный запрос получает
-`400 invalid_request` с `Content-Type: application/problem+json`.
-
-Список `Servers` очищается в загруженной спецификации, чтобы валидация работала
-с фактическим адресом развёртывания. `SkipSettingDefaults: true` сохраняет
-исходные байты тела запроса для SHA-256 при идемпотентном создании поездки.
-Хендлер преобразует JSON в `api.TripData` через `json.Unmarshal`, который также
-отклоняет лишние данные после JSON-документа. Проверка нулевых UUID выполняется
-отдельно в `create`, поскольку UUID из одних нулей соответствует формату UUID.
-
-### Единый маппинг ошибок
-
-[domainerror.Problem](../../internal/http/domainerror/domainerror.go) переводит
-доменные ошибки, в том числе обёрнутые через `%w`, в HTTP-статус и Problem.
-Хендлеры передают ошибку общему помощнику записи ответа.
+Пакет [domainerror](../../internal/http/domainerror/domainerror.go) в одном месте
+переводит доменные ошибки, включая обёрнутые через `%w`, в Problem Details:
 
 | Ошибка | HTTP | `code` |
-|---|---|---|
-| Поездка не найдена | `404` | `trip_not_found` |
-| Поездка уже завершена | `409` | `trip_completed` |
-| У водителя есть активная поездка | `409` | `driver_busy` |
-| Ключ идемпотентности использован с другим телом | `409` | `idempotency_conflict` |
-| Неизвестная внутренняя ошибка | `500` | `internal_error` |
+|---|---:|---|
+| `ErrTripNotFound` | `404` | `trip_not_found` |
+| `ErrTripCompleted` | `409` | `trip_completed` |
+| `ErrDriverBusy` | `409` | `driver_busy` |
+| `ErrIdempotencyConflict` | `409` | `idempotency_conflict` |
+| неизвестная внутренняя ошибка | `500` | `internal_error` |
 
-Внутренние детали ошибки записываются в лог; клиент получает безопасное
-сообщение. В поле `instance` указывается путь запроса.
+Внутренняя ошибка логируется, но её текст не попадает в ответ клиенту.
+
+### OpenAPI validation
+
+Источник истины — [OpenAPI-контракт](../../contracts/openapi/trip-service.openapi.yaml).
+`make generate` обновляет Go-типы, серверный интерфейс и встроенную
+спецификацию. Request validator проверяет обязательные поля, типы, диапазоны и
+неизвестные свойства до вызова обработчика. В `400 invalid_request` возвращается
+деталь из `SchemaError`, например имя поля и нарушенное ограничение; сам
+OpenAPI-контракт для этого не изменяется.
+
+Исходные байты тела сохраняются для SHA-256 idempotency hash. Повтор с тем же
+ключом и телом возвращает существующую поездку, а тот же ключ с другим телом —
+`409 idempotency_conflict`.
+
+### PostgreSQL и транзакции
+
+Пул создаётся один раз в [infra/postgres/pool](../../internal/infra/postgres/pool/pool.go)
+и передаётся репозиториям и transaction manager. Репозитории используют общий
+executor: если в контексте есть `pgx.Tx`, запрос выполняется в ней, иначе —
+через пул.
+
+Transaction manager помещает транзакцию в контекст, выполняет callback и делает
+`COMMIT` только при успехе. При ошибке или панике выполняется `ROLLBACK`.
+Поэтому создание поездки вместе с начальной историей и завершение поездки вместе
+с новой записью истории атомарны.
+
+### Observability
+
+Сервис создаёт OTel providers до PostgreSQL-пула и экспортирует трейсы и
+метрики по OTLP/HTTP. Resource содержит `service.name`, `service.version`,
+`service.namespace`, `deployment.environment` и атрибуты SDK. Завершение
+providers выполняется после остановки HTTP-сервера и закрытия пула.
+
+Порядок middleware зафиксирован в роутере:
+
+```text
+Recover → Tracing → Logging → Metrics → OpenAPI validator → handler
+```
+
+- `Recover` перехватывает панику, логирует её со stack trace и возвращает
+  `500 internal_error`;
+- `Tracing` создаёт HTTP-спан с именем `{method} {http.route}` и отмечает
+  `5xx`/panic через `error.type` и `codes.Error`;
+- `Logging` после ответа пишет одну запись `request handled`;
+- `Metrics` измеряет длительность и количество активных запросов;
+- `otelpgx` создаёт DB-спаны на уровне пула, а DB tracer добавляет collection и
+  записывает требуемую гистограмму.
+
+Логи формируются `slog.JSONHandler`, пишутся в stdout и фильтруются через
+`LOG_LEVEL`. Логгер передаётся зависимостью. Контекстный handler добавляет
+`trace_id` и `span_id`, поэтому запись запроса и бизнес-событие можно связать с
+тем же трейсом в Jaeger. Тела HTTP-запросов и ответов не логируются.
+
+| Сигнал | Тип | Основные атрибуты |
+|---|---|---|
+| `http.server.request.duration` | histogram, seconds | method, route, status code |
+| `http.server.active_requests` | up-down counter | method, route |
+| `db.client.operation.duration` | histogram, seconds | operation, collection, error type |
+| `tripgo.trips.created` | counter | — |
+| `tripgo.trips.completed` | counter | — |
+
+Бизнес-события `trip created` и `trip completed` записываются только после
+успешной транзакции. Идемпотентный replay не увеличивает `tripgo.trips.created`.
+Недоступность Collector не влияет на обработку HTTP-запросов; exporter сообщает
+об ошибке асинхронно, а сервис продолжает работу.
+
+## Тестирование
+
+- доменные правила и error mapper проверяются table-driven unit-тестами;
+- usecase тестируются через `gomock`, включая ошибки репозитория, транзакции,
+  историю и все ветки идемпотентности;
+- HTTP-обработчики тестируются через `httptest` и моки usecase;
+- middleware имеют unit-тесты на logging, tracing и recovery;
+- репозитории проверяются на PostgreSQL 16 через `testcontainers-go`;
+- интеграционная suite поднимает один контейнер, применяет миграции и очищает
+  таблицы перед каждым тестом;
+- отдельный сценарий подтверждает rollback записи в две таблицы.
+
+```bash
+make lint
+make test
+make test-integration
+```
+
+`make test` запускает тесты с race detector и печатает покрытие `domain` и
+`usecase`; текущий итоговый результат — `88.9%`. Интеграционные тесты отделены
+build-тегом `integration` и требуют работающий Docker.
 
 ## Команды
 
 | Команда | Назначение |
 |---|---|
-| `make build` | Собрать все пакеты |
-| `make test` | Запустить unit-тесты с `-race` и вывести итоговое покрытие домена и usecase |
-| `make test-integration` | Запустить интеграционные тесты репозиториев с реальным PostgreSQL |
-| `make generate` | Обновить типы, серверный интерфейс и встроенную спецификацию OpenAPI |
+| `make build [SERVICE_VERSION=...]` | Собрать все пакеты и записать версию в бинарник |
+| `make run [SERVICE_VERSION=...]` | Запустить сервис |
+| `make test` | Unit- и handler-тесты с race detector и отчётом покрытия |
+| `make test-integration` | Интеграционные тесты репозиториев |
+| `make lint` | Запустить обязательный набор линтеров |
+| `make generate` | Обновить OpenAPI-код и gomock-файлы |
 | `make migrate` | Применить миграции |
-| `make migrate-status` | Посмотреть состояние миграций |
-| `make run` | Запустить сервис |
+| `make migrate-down` | Откатить последнюю миграцию |
+| `make migrate-status` | Показать состояние миграций |
 
-`make test-integration` требует запущенный Docker. Тесты используют
-`testcontainers-go`, самостоятельно поднимают временный PostgreSQL и отделены
-build-тегом `integration`.
+## Результат observability
 
-Сгенерированный файл `internal/generated/api.gen.go` обновляется через
-`make generate` и коммитится вместе с изменениями настроек генерации или
-контракта.
+Один HTTP-трейс связывает создание поездки, резервирование idempotency key,
+запись поездки и истории и фиксацию транзакции:
+
+![Jaeger: HTTP span and idempotency query](screens/jaeger1.png)
+
+![Jaeger: trip, history and commit spans](screens/jaeger2.png)
+
+HTTP-метрики используют шаблоны маршрутов, поэтому `tripId` не создаёт
+высокую кардинальность:
+
+![Grafana: HTTP metrics](screens/grafana1.png)
+
+DB-метрика разделяется по операции и коллекции:
+
+![Grafana: PostgreSQL metrics](screens/grafana2.png)
+
+Бизнес-счётчики отражают только успешно зафиксированные изменения:
+
+![Grafana: business metrics](screens/grafana3.png)
+
+Для воспроизведения графиков в Grafana Explore использовались запросы:
+
+```promql
+sum by (http_route, http_response_status_code) (
+  http_server_request_duration_seconds_count
+)
+```
+
+```promql
+sum by (db_operation_name, db_collection_name) (
+  db_client_operation_duration_seconds_count
+)
+```
+
+```promql
+tripgo_trips_created_total
+tripgo_trips_completed_total
+```
