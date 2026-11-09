@@ -86,7 +86,7 @@ func TestProblem(t *testing.T) {
 			status, problem := domainerror.Problem(tt.err)
 
 			assert.Equal(t, tt.wantStatus, status)
-			assert.Equal(t, int32(tt.wantStatus), problem.Status)
+			assert.EqualValues(t, tt.wantStatus, problem.Status)
 			assert.Equal(t, tt.wantCode, problem.Code)
 			assert.Equal(t, tt.wantTitle, problem.Title)
 			assert.Equal(t, tt.wantType, problem.Type)

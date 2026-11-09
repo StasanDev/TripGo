@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -34,123 +35,126 @@ const validRequestBody = `{
 	"price": 1500
 }`
 
+type fixture struct {
+	service  *MocktripCreator
+	handler  *create.Handler
+	recorder *httptest.ResponseRecorder
+}
+
 func TestCreateTripSuccess(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	service := NewMocktripCreator(ctrl)
-	handler := create.NewHandler(service)
+	f := newFixture(t)
+
 	input := validTripInput()
 	createdTrip := testTrip(t, input)
 
-	service.EXPECT().CreateTrip(gomock.Any(), input).Return(createdTrip, false, nil)
+	f.service.EXPECT().CreateTrip(gomock.Any(), input).Return(createdTrip, false, nil)
 
 	req := newCreateTripRequest([]byte(validRequestBody))
-	recorder := httptest.NewRecorder()
-	handler.CreateTrip(recorder, req, api.CreateTripParams{})
 
-	require.Equal(t, http.StatusCreated, recorder.Code)
-	assert.Equal(t, "application/json", recorder.Header().Get("Content-Type"))
-	assert.Equal(t, "/api/v1/trips/"+createdTrip.ID.String(), recorder.Header().Get("Location"))
-	assertTripResponse(t, recorder.Body.Bytes(), createdTrip)
+	f.handler.CreateTrip(f.recorder, req, api.CreateTripParams{})
+
+	require.Equal(t, http.StatusCreated, f.recorder.Code)
+	assert.Equal(t, "application/json", f.recorder.Header().Get("Content-Type"))
+	assert.Equal(t, "/api/v1/trips/"+createdTrip.ID.String(), f.recorder.Header().Get("Location"))
+	assertTripResponse(t, f.recorder.Body.Bytes(), createdTrip)
 }
 
 func TestCreateTripIdempotencyReplay(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	service := NewMocktripCreator(ctrl)
-	handler := create.NewHandler(service)
+	f := newFixture(t)
+
 	key := uuid.MustParse("33333333-3333-4333-8333-333333333333")
 	requestBody := []byte(validRequestBody)
 	input := tripInputWithIdempotency(key, requestBody)
 	existingTrip := testTrip(t, validTripInput())
 
-	service.EXPECT().CreateTrip(gomock.Any(), input).Return(existingTrip, true, nil)
+	f.service.EXPECT().CreateTrip(gomock.Any(), input).Return(existingTrip, true, nil)
 
 	req := newCreateTripRequest(requestBody)
-	recorder := httptest.NewRecorder()
-	handler.CreateTrip(recorder, req, api.CreateTripParams{IdempotencyKey: &key})
+	f.handler.CreateTrip(f.recorder, req, api.CreateTripParams{IdempotencyKey: &key})
 
-	require.Equal(t, http.StatusOK, recorder.Code)
-	assert.Equal(t, "application/json", recorder.Header().Get("Content-Type"))
-	assert.Empty(t, recorder.Header().Get("Location"))
-	assertTripResponse(t, recorder.Body.Bytes(), existingTrip)
+	require.Equal(t, http.StatusOK, f.recorder.Code)
+	assert.Equal(t, "application/json", f.recorder.Header().Get("Content-Type"))
+	assert.Empty(t, f.recorder.Header().Get("Location"))
+	assertTripResponse(t, f.recorder.Body.Bytes(), existingTrip)
 }
 
 func TestCreateTripPassesIdempotencyKeyAndRequestHash(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	service := NewMocktripCreator(ctrl)
-	handler := create.NewHandler(service)
+	f := newFixture(t)
 	key := uuid.MustParse("33333333-3333-4333-8333-333333333333")
 	requestBody := []byte(validRequestBody)
 	expectedInput := tripInputWithIdempotency(key, requestBody)
 	createdTrip := testTrip(t, validTripInput())
 
-	service.EXPECT().CreateTrip(gomock.Any(), expectedInput).Return(createdTrip, false, nil)
+	f.service.EXPECT().CreateTrip(gomock.Any(), expectedInput).Return(createdTrip, false, nil)
 
 	req := newCreateTripRequest(requestBody)
-	recorder := httptest.NewRecorder()
-	handler.CreateTrip(recorder, req, api.CreateTripParams{IdempotencyKey: &key})
+	f.handler.CreateTrip(f.recorder, req, api.CreateTripParams{IdempotencyKey: &key})
 
-	require.Equal(t, http.StatusCreated, recorder.Code)
+	require.Equal(t, http.StatusCreated, f.recorder.Code)
 }
 
 func TestCreateTripInvalidJSON(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	service := NewMocktripCreator(ctrl)
-	handler := create.NewHandler(service)
+	f := newFixture(t)
 	req := newCreateTripRequest([]byte(`{"user_id":`))
-	recorder := httptest.NewRecorder()
 
-	handler.CreateTrip(recorder, req, api.CreateTripParams{})
+	f.handler.CreateTrip(f.recorder, req, api.CreateTripParams{})
 
-	assertProblem(t, recorder, http.StatusBadRequest, "invalid_request", req.URL.Path)
+	assertProblem(t, f.recorder, http.StatusBadRequest, "invalid_request", req.URL.Path)
 }
 
 func TestCreateTripDriverBusy(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	service := NewMocktripCreator(ctrl)
-	handler := create.NewHandler(service)
+	f := newFixture(t)
 	input := validTripInput()
 
-	service.EXPECT().CreateTrip(gomock.Any(), input).Return(trip.Trip{}, false, trip.ErrDriverBusy)
+	f.service.EXPECT().CreateTrip(gomock.Any(), input).Return(trip.Trip{}, false, trip.ErrDriverBusy)
 
 	req := newCreateTripRequest([]byte(validRequestBody))
-	recorder := httptest.NewRecorder()
-	handler.CreateTrip(recorder, req, api.CreateTripParams{})
 
-	assertProblem(t, recorder, http.StatusConflict, "driver_busy", req.URL.Path)
+	f.handler.CreateTrip(f.recorder, req, api.CreateTripParams{})
+
+	assertProblem(t, f.recorder, http.StatusConflict, "driver_busy", req.URL.Path)
 }
 
 func TestCreateTripInternalError(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	service := NewMocktripCreator(ctrl)
-	handler := create.NewHandler(service)
+	f := newFixture(t)
 	input := validTripInput()
 	internalErr := errors.New("database password leaked")
 
-	service.EXPECT().CreateTrip(gomock.Any(), input).Return(trip.Trip{}, false, internalErr)
+	f.service.EXPECT().CreateTrip(gomock.Any(), input).Return(trip.Trip{}, false, internalErr)
 
 	req := newCreateTripRequest([]byte(validRequestBody))
-	recorder := httptest.NewRecorder()
-	handler.CreateTrip(recorder, req, api.CreateTripParams{})
+	f.handler.CreateTrip(f.recorder, req, api.CreateTripParams{})
 
-	responseBody := assertProblem(t,recorder, http.StatusInternalServerError, "internal_error", req.URL.Path)
+	responseBody := assertProblem(t, f.recorder, http.StatusInternalServerError, "internal_error", req.URL.Path)
 	assert.NotContains(t, string(responseBody), internalErr.Error())
 }
 
 func TestCreateTripIdempotencyConflict(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	service := NewMocktripCreator(ctrl)
-	handler := create.NewHandler(service)
+	f := newFixture(t)
 	key := uuid.MustParse("33333333-3333-4333-8333-333333333333")
 	requestBody := []byte(validRequestBody)
 	input := tripInputWithIdempotency(key, requestBody)
 
-	service.EXPECT().CreateTrip(gomock.Any(), input).Return(trip.Trip{}, false, trip.ErrIdempotencyConflict)
+	f.service.EXPECT().CreateTrip(gomock.Any(), input).Return(trip.Trip{}, false, trip.ErrIdempotencyConflict)
 
 	req := newCreateTripRequest(requestBody)
-	recorder := httptest.NewRecorder()
-	handler.CreateTrip(recorder, req, api.CreateTripParams{IdempotencyKey: &key})
+	f.handler.CreateTrip(f.recorder, req, api.CreateTripParams{IdempotencyKey: &key})
 
-	assertProblem(t, recorder, http.StatusConflict, "idempotency_conflict", req.URL.Path)
+	assertProblem(t, f.recorder, http.StatusConflict, "idempotency_conflict", req.URL.Path)
+}
+
+func newFixture(t *testing.T) *fixture {
+	t.Helper()
+
+	ctrl := gomock.NewController(t)
+	service := NewMocktripCreator(ctrl)
+	logger := slog.New(slog.DiscardHandler)
+
+	return &fixture{
+		service:  service,
+		handler:  create.NewHandler(service, logger),
+		recorder: httptest.NewRecorder(),
+	}
 }
 
 func newCreateTripRequest(body []byte) *http.Request {

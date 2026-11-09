@@ -3,8 +3,9 @@ package repository
 import (
 	"fmt"
 
-	"github.com/StasanDev/avitoLabs/internal/domain/trip"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/StasanDev/avitoLabs/internal/domain/trip"
 )
 
 func scanTrip(row pgx.Row) (trip.Trip, error) {

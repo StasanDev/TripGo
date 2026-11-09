@@ -44,5 +44,8 @@ func (s *Service) FinishTrip(ctx context.Context, id uuid.UUID) (trip.Trip, erro
 		return trip.Trip{}, err
 	}
 
+	if s.recorder != nil {
+		s.recorder.Complete(ctx, tripOut.ID)
+	}
 	return tripOut, nil
 }

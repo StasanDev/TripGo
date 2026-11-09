@@ -3,6 +3,7 @@ package finish_test
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -18,25 +19,28 @@ import (
 	"github.com/StasanDev/avitoLabs/internal/http/trip/finish"
 )
 
+type fixture struct {
+	service  *MocktripFinisher
+	handler  *finish.Handler
+	recorder *httptest.ResponseRecorder
+}
+
 func TestFinishTripSuccess(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	service := NewMocktripFinisher(ctrl)
-	handler := finish.NewHandler(service)
-	recorder := httptest.NewRecorder()
+	f := newFixture(t)
 
 	tripID := uuid.MustParse("33333333-3333-4333-8333-333333333333")
 	testTrip := validTrip(t, tripID)
 	finishedAt := time.Date(2026, time.November, 5, 11, 0, 0, 0, time.UTC)
 	require.NoError(t, testTrip.Finish(finishedAt))
 
-	service.EXPECT().FinishTrip(gomock.Any(), tripID).Return(testTrip, nil)
+	f.service.EXPECT().FinishTrip(gomock.Any(), tripID).Return(testTrip, nil)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/trips/"+tripID.String()+"/finish", nil)
-	handler.FinishTrip(recorder, req, tripID)
+	f.handler.FinishTrip(f.recorder, req, tripID)
 
-	require.Equal(t, http.StatusOK, recorder.Code)
-	assert.Equal(t, "application/json", recorder.Header().Get("Content-Type"))
+	require.Equal(t, http.StatusOK, f.recorder.Code)
+	assert.Equal(t, "application/json", f.recorder.Header().Get("Content-Type"))
 
-	responseBody := recorder.Body.Bytes()
+	responseBody := f.recorder.Body.Bytes()
 	var response api.Trip
 	require.NoError(t, json.Unmarshal(responseBody, &response))
 	assert.Equal(t, testTrip.ID, response.Id)
@@ -46,35 +50,43 @@ func TestFinishTripSuccess(t *testing.T) {
 }
 
 func TestFinishTripAlreadyCompleted(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	service := NewMocktripFinisher(ctrl)
-	handler := finish.NewHandler(service)
-	recorder := httptest.NewRecorder()
+	f := newFixture(t)
 
 	tripID := uuid.MustParse("33333333-3333-4333-8333-333333333333")
-	service.EXPECT().FinishTrip(gomock.Any(), tripID).Return(trip.Trip{}, trip.ErrTripCompleted)
+	f.service.EXPECT().FinishTrip(gomock.Any(), tripID).Return(trip.Trip{}, trip.ErrTripCompleted)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/trips/"+tripID.String()+"/finish", nil)
-	handler.FinishTrip(recorder, req, tripID)
+	f.handler.FinishTrip(f.recorder, req, tripID)
 
-	assertProblem(t, recorder, http.StatusConflict, "trip_completed", req.URL.Path)
+	assertProblem(t, f.recorder, http.StatusConflict, "trip_completed", req.URL.Path)
 }
 
 func TestFinishTripInternalError(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	service := NewMocktripFinisher(ctrl)
-	handler := finish.NewHandler(service)
-	recorder := httptest.NewRecorder()
+	f := newFixture(t)
 
 	tripID := uuid.MustParse("33333333-3333-4333-8333-333333333333")
 	internalErr := errors.New("database password leaked")
-	service.EXPECT().FinishTrip(gomock.Any(), tripID).Return(trip.Trip{}, internalErr)
+	f.service.EXPECT().FinishTrip(gomock.Any(), tripID).Return(trip.Trip{}, internalErr)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/trips/"+tripID.String()+"/finish", nil)
-	handler.FinishTrip(recorder, req, tripID)
+	f.handler.FinishTrip(f.recorder, req, tripID)
 
-	responseBody := assertProblem(t, recorder, http.StatusInternalServerError, "internal_error", req.URL.Path)
+	responseBody := assertProblem(t, f.recorder, http.StatusInternalServerError, "internal_error", req.URL.Path)
 	assert.NotContains(t, string(responseBody), internalErr.Error())
+}
+
+func newFixture(t *testing.T) *fixture {
+	t.Helper()
+
+	ctrl := gomock.NewController(t)
+	service := NewMocktripFinisher(ctrl)
+	logger := slog.New(slog.DiscardHandler)
+
+	return &fixture{
+		service:  service,
+		handler:  finish.NewHandler(service, logger),
+		recorder: httptest.NewRecorder(),
+	}
 }
 
 func assertProblem(

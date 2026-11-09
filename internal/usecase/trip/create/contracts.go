@@ -30,4 +30,8 @@ type (
 			record trip.IdempotencyRecord,
 		) (existing trip.IdempotencyRecord, reserved bool, err error)
 	}
+
+	recorder interface {
+		Create(ctx context.Context, tripID uuid.UUID)
+	}
 )

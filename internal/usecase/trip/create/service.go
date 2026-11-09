@@ -8,6 +8,7 @@ type Service struct {
 	idempotencyRepository       idempotencyRepository
 	tripStatusHistoryRepository tripStatusHistoryRepository
 	idempotencyTTL              time.Duration
+	recorder                    recorder
 }
 
 func NewService(
@@ -16,6 +17,7 @@ func NewService(
 	idempotencyRepository idempotencyRepository,
 	tripStatusHistoryRepository tripStatusHistoryRepository,
 	idempotencyTTL time.Duration,
+	recorder recorder,
 ) *Service {
 	return &Service{
 		tripRepository:              tripRepository,
@@ -23,5 +25,6 @@ func NewService(
 		idempotencyRepository:       idempotencyRepository,
 		tripStatusHistoryRepository: tripStatusHistoryRepository,
 		idempotencyTTL:              idempotencyTTL,
+		recorder:                    recorder,
 	}
 }

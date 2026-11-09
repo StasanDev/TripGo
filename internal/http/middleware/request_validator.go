@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -16,30 +17,59 @@ import (
 	"github.com/StasanDev/avitoLabs/internal/http/response"
 )
 
-func RequestValidator() (func(http.Handler) http.Handler, error) {
+func RequestValidator(logger *slog.Logger) (func(http.Handler) http.Handler, error) {
 	spec, err := api.GetSpec()
 	if err != nil {
 		return nil, fmt.Errorf("load OpenAPI specification: %w", err)
 	}
 	spec.Servers = nil
+	validationErrorHandler := ValidationErrorHandler(logger)
 
 	return oapimiddleware.OapiRequestValidatorWithOptions(spec, &oapimiddleware.Options{
 		Options: openapi3filter.Options{SkipSettingDefaults: true},
 		ErrorHandlerWithOpts: func(
-			_ context.Context, err error, w http.ResponseWriter, r *http.Request,
+			ctx context.Context, err error, w http.ResponseWriter, r *http.Request,
 			opts oapimiddleware.ErrorHandlerOpts,
 		) {
 			if opts.StatusCode == http.StatusInternalServerError {
-				response.WriteError(w, r, err)
+				logger.ErrorContext(
+					ctx,
+					"request validation failed",
+					slog.Any("error", err),
+				)
+
+				_, writeErr := response.WriteError(w, r, err)
+				if writeErr != nil {
+					logger.ErrorContext(
+						ctx,
+						"failed to write request validation error response",
+						slog.Any("error", writeErr),
+					)
+				}
 				return
 			}
-			ValidationErrorHandler(w, r, err)
+
+			validationErrorHandler(w, r, err)
 		},
 	}), nil
 }
 
-func ValidationErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
-	response.WriteProblem(w, r, http.StatusBadRequest, domainerror.InvalidRequest(validationErrorDetail(err)))
+func ValidationErrorHandler(logger *slog.Logger) func(http.ResponseWriter, *http.Request, error) {
+	return func(w http.ResponseWriter, r *http.Request, err error) {
+		writeErr := response.WriteProblem(
+			w,
+			r,
+			http.StatusBadRequest,
+			domainerror.InvalidRequest(validationErrorDetail(err)),
+		)
+		if writeErr != nil {
+			logger.ErrorContext(
+				r.Context(),
+				"failed to write validation error response",
+				slog.Any("error", writeErr),
+			)
+		}
+	}
 }
 
 func validationErrorDetail(err error) string {

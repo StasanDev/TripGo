@@ -60,5 +60,8 @@ func (s *Service) CreateTrip(ctx context.Context, tripInp trip.TripInput) (trip.
 		return trip.Trip{}, false, err
 	}
 
+	if !replayed && s.recorder != nil {
+		s.recorder.Create(ctx, resultTrip.ID)
+	}
 	return resultTrip, replayed, nil
 }

@@ -7,9 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/suite"
+
 	repository "github.com/StasanDev/avitoLabs/internal/repository/postgres/trip"
 	testkit "github.com/StasanDev/avitoLabs/internal/testkit/postgres"
-	"github.com/stretchr/testify/suite"
 )
 
 type RepositorySuite struct {

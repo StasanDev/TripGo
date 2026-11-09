@@ -2,9 +2,11 @@ package container
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/StasanDev/avitoLabs/internal/http/trip/get"
 	database "github.com/StasanDev/avitoLabs/internal/infra/postgres/pool"
 	"github.com/StasanDev/avitoLabs/internal/infra/postgres/transaction/txmanager"
+	"github.com/StasanDev/avitoLabs/internal/infra/telemetry"
 	repo "github.com/StasanDev/avitoLabs/internal/repository/postgres/trip"
 	createusecase "github.com/StasanDev/avitoLabs/internal/usecase/trip/create"
 	finishusecase "github.com/StasanDev/avitoLabs/internal/usecase/trip/finish"
@@ -22,18 +25,44 @@ import (
 )
 
 type App struct {
-	pool   *pgxpool.Pool
-	server *http.Server
+	pool               *pgxpool.Pool
+	server             *http.Server
+	telemetryProviders *telemetry.Providers
+	shutdownTimeout    time.Duration
 }
 
-func BuildApp(ctx context.Context, cfg *config.Config) (*App, error) {
+func BuildApp(
+	ctx context.Context,
+	cfg *config.Config,
+	logger *slog.Logger,
+	serviceVersion string,
+) (*App, error) {
+	providers, err := telemetry.NewProviders(
+		ctx,
+		cfg.OTel.ServiceName,
+		serviceVersion,
+		cfg.ShutdownTimeout,
+		logger,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create telemetry providers: %w", err)
+	}
+
 	dbCtx, cancel := context.WithTimeout(ctx, cfg.DB.ConnectTimeout)
 	defer cancel()
-	pool, err := database.NewPostgresPool(dbCtx, &cfg.DB)
+	pool, err := database.NewPostgresPool(
+		dbCtx,
+		&cfg.DB,
+		providers.Tracer,
+		providers.Meter,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create postgres pool: %w", err)
+		return nil, errors.Join(
+			fmt.Errorf("failed to create postgres pool: %w", err),
+			shutdownTelemetryProviders(providers, cfg.ShutdownTimeout),
+		)
 	}
-	log.Printf("connected to db")
+	logger.Info("connected to db")
 
 	tripRepository := repo.NewTripRepository(pool, cfg.DB.QueryTimeout)
 	tripStatusHistoryRepository := repo.NewTripStatusRepository(pool, cfg.DB.QueryTimeout)
@@ -42,20 +71,30 @@ func BuildApp(ctx context.Context, cfg *config.Config) (*App, error) {
 	createService := createusecase.NewService(
 		tripRepository, txManager, idempotencyRepository,
 		tripStatusHistoryRepository, cfg.IdempotencyTTL,
+		providers,
 	)
 	getService := getusecase.NewService(tripRepository)
-	finishService := finishusecase.NewService(tripRepository, tripStatusHistoryRepository, txManager)
+	finishService := finishusecase.NewService(tripRepository, tripStatusHistoryRepository, txManager, providers)
 	httpHandler := httptransport.NewHandler(
-		create.NewHandler(createService),
-		get.NewHandler(getService),
-		finish.NewHandler(finishService),
+		create.NewHandler(createService, logger),
+		get.NewHandler(getService, logger),
+		finish.NewHandler(finishService, logger),
 		pool,
 		cfg.DB.QueryTimeout,
+		logger,
 	)
-	router, err := httptransport.NewRouter(httpHandler)
+	router, err := httptransport.NewRouter(
+		httpHandler,
+		logger,
+		providers.Tracer,
+		providers.Meter,
+	)
 	if err != nil {
 		pool.Close()
-		return nil, fmt.Errorf("build HTTP router: %w", err)
+		return nil, errors.Join(
+			fmt.Errorf("build HTTP router: %w", err),
+			shutdownTelemetryProviders(providers, cfg.ShutdownTimeout),
+		)
 	}
 
 	server := &http.Server{
@@ -68,7 +107,9 @@ func BuildApp(ctx context.Context, cfg *config.Config) (*App, error) {
 	}
 
 	return &App{
-		pool:   pool,
-		server: server,
+		pool:               pool,
+		server:             server,
+		telemetryProviders: providers,
+		shutdownTimeout:    cfg.ShutdownTimeout,
 	}, nil
 }

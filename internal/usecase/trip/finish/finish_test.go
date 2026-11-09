@@ -109,6 +109,7 @@ func newFinishTestDependencies(t *testing.T) *finishTestDependencies {
 			tripRepository,
 			historyRepository,
 			txManager,
+			nil,
 		),
 	}
 }

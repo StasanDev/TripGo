@@ -220,6 +220,7 @@ func newCreateTestDependencies(t *testing.T) *createTestDependencies {
 			idempotencyRepository,
 			historyRepository,
 			testIdempotencyTTL,
+			nil,
 		),
 	}
 }

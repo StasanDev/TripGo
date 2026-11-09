@@ -5,12 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/StasanDev/avitoLabs/internal/domain/trip"
-	"github.com/StasanDev/avitoLabs/internal/usecase/trip/get"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"github.com/StasanDev/avitoLabs/internal/domain/trip"
+	"github.com/StasanDev/avitoLabs/internal/usecase/trip/get"
 )
 
 func TestGetTripSuccess(t *testing.T) {

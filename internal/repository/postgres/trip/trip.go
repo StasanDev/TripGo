@@ -18,7 +18,7 @@ import (
 
 var queryTripCols = []string{
 	"id", "user_id", "driver_id", "start_latitude", "start_longitude",
-	"end_latitude", "end_longitude", "price", "status",
+	"end_latitude", "end_longitude", "price", statusColumn,
 	"started_at", "finished_at",
 }
 
@@ -26,6 +26,7 @@ const (
 	tripsTable              = "trips"
 	tripStatusHistoryTable  = "trip_status_history"
 	driverActiveUniqueIndex = "trips_driver_active_uidx"
+	statusColumn            = "status"
 )
 
 type TripRepository struct {
@@ -92,12 +93,12 @@ func (r *TripRepository) FinishTrip(ctx context.Context, id uuid.UUID, at time.T
 	defer cancel()
 
 	query, args, err := sq.Update(tripsTable).SetMap(map[string]interface{}{
-		"status":      trip.TripStatusCompleted,
+		statusColumn:  trip.TripStatusCompleted,
 		"finished_at": at,
 		"updated_at":  at,
 	}).Where(sq.Eq{
-		"id":     id,
-		"status": trip.TripStatusActive,
+		"id":         id,
+		statusColumn: trip.TripStatusActive,
 	}).Suffix("RETURNING " + strings.Join(queryTripCols, ", ")).
 		PlaceholderFormat(sq.Dollar).ToSql()
 	if err != nil {

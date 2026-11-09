@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,7 +13,10 @@ import (
 
 	"github.com/StasanDev/avitoLabs/internal/config"
 	"github.com/StasanDev/avitoLabs/internal/container"
+	"github.com/StasanDev/avitoLabs/internal/infra/telemetry"
 )
+
+var serviceVersion = "dev"
 
 func main() {
 	if err := run(); err != nil {
@@ -26,19 +30,23 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
-	// log.Println(cfg)
-	log.Printf("config is loaded")
+
+	logger, err := telemetry.NewLogger(os.Stdout, cfg.LogLevel, cfg.OTel.ServiceName)
+	if err != nil {
+		return fmt.Errorf("create logger: %w", err)
+	}
 
 	ctx := context.Background()
-	app, err := container.BuildApp(ctx, cfg)
+
+	app, err := container.BuildApp(ctx, cfg, logger, serviceVersion)
 	if err != nil {
 		return fmt.Errorf("build app: %w", err)
 	}
-	log.Printf("app is built")
+	logger.Info("app is built")
 
 	serverErrors := make(chan error, 1)
 	go func() {
-		log.Printf("starting HTTP server on %s", cfg.Http.Addr)
+		logger.Info("starting HTTP server", slog.String("addr", cfg.Http.Addr))
 		serverErrors <- app.Run()
 	}()
 
@@ -65,6 +73,6 @@ func run() error {
 		return errors.Join(runErr, fmt.Errorf("graceful shutdown: %w", err))
 	}
 
-	log.Printf("service stopped")
+	logger.Info("service stopped")
 	return runErr
 }

@@ -3,6 +3,7 @@ package get_test
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -18,24 +19,27 @@ import (
 	"github.com/StasanDev/avitoLabs/internal/http/trip/get"
 )
 
+type fixture struct {
+	service  *MocktripGetter
+	handler  *get.Handler
+	recorder *httptest.ResponseRecorder
+}
+
 func TestGetTripSuccess(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	service := NewMocktripGetter(ctrl)
-	handler := get.NewHandler(service)
-	recorder := httptest.NewRecorder()
+	f := newFixture(t)
 
 	tripID := uuid.MustParse("33333333-3333-4333-8333-333333333333")
 	testTrip := validTrip(t, tripID)
 
-	service.EXPECT().GetTrip(gomock.Any(), tripID).Return(testTrip, nil)
+	f.service.EXPECT().GetTrip(gomock.Any(), tripID).Return(testTrip, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/trips/"+tripID.String(), nil)
-	handler.GetTrip(recorder, req, tripID)
+	f.handler.GetTrip(f.recorder, req, tripID)
 
-	require.Equal(t, http.StatusOK, recorder.Code)
-	assert.Equal(t, "application/json", recorder.Header().Get("Content-Type"))
+	require.Equal(t, http.StatusOK, f.recorder.Code)
+	assert.Equal(t, "application/json", f.recorder.Header().Get("Content-Type"))
 
 	var response api.Trip
-	require.NoError(t, json.NewDecoder(recorder.Body).Decode(&response))
+	require.NoError(t, json.NewDecoder(f.recorder.Body).Decode(&response))
 	assert.Equal(t, testTrip.ID, response.Id)
 	assert.Equal(t, api.Active, response.Status)
 	assert.Equal(t, testTrip.UserID, response.UserId)
@@ -50,26 +54,23 @@ func TestGetTripSuccess(t *testing.T) {
 }
 
 func TestGetTripNotFound(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	service := NewMocktripGetter(ctrl)
-	handler := get.NewHandler(service)
-	recorder := httptest.NewRecorder()
+	f := newFixture(t)
 
 	tripID := uuid.MustParse("33333333-3333-4333-8333-333333333333")
-	service.EXPECT().GetTrip(gomock.Any(), tripID).Return(trip.Trip{}, trip.ErrTripNotFound)
+	f.service.EXPECT().GetTrip(gomock.Any(), tripID).Return(trip.Trip{}, trip.ErrTripNotFound)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/trips/"+tripID.String(), nil)
-	handler.GetTrip(recorder, req, tripID)
+	f.handler.GetTrip(f.recorder, req, tripID)
 
-	require.Equal(t, http.StatusNotFound, recorder.Code)
+	require.Equal(t, http.StatusNotFound, f.recorder.Code)
 	assert.Equal(
 		t,
 		"application/problem+json",
-		recorder.Header().Get("Content-Type"),
+		f.recorder.Header().Get("Content-Type"),
 	)
 
 	var problem api.Problem
-	require.NoError(t, json.NewDecoder(recorder.Body).Decode(&problem))
+	require.NoError(t, json.NewDecoder(f.recorder.Body).Decode(&problem))
 	assert.Equal(t, "trip_not_found", problem.Code)
 	assert.EqualValues(t, http.StatusNotFound, problem.Status)
 	require.NotNil(t, problem.Instance)
@@ -77,25 +78,22 @@ func TestGetTripNotFound(t *testing.T) {
 }
 
 func TestGetTripInternalError(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	service := NewMocktripGetter(ctrl)
-	handler := get.NewHandler(service)
-	recorder := httptest.NewRecorder()
+	f := newFixture(t)
 
 	tripID := uuid.MustParse("33333333-3333-4333-8333-333333333333")
 	internalError := errors.New("database password leaked")
-	service.EXPECT().GetTrip(gomock.Any(), tripID).Return(trip.Trip{}, internalError)
+	f.service.EXPECT().GetTrip(gomock.Any(), tripID).Return(trip.Trip{}, internalError)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/trips/"+tripID.String(), nil)
-	handler.GetTrip(recorder, req, tripID)
+	f.handler.GetTrip(f.recorder, req, tripID)
 
-	require.Equal(t, http.StatusInternalServerError, recorder.Code)
+	require.Equal(t, http.StatusInternalServerError, f.recorder.Code)
 	assert.Equal(
 		t,
 		"application/problem+json",
-		recorder.Header().Get("Content-Type"),
+		f.recorder.Header().Get("Content-Type"),
 	)
-	responseBody := recorder.Body.Bytes()
+	responseBody := f.recorder.Body.Bytes()
 	var problem api.Problem
 	require.NoError(t, json.Unmarshal(responseBody, &problem))
 	assert.Equal(t, "internal_error", problem.Code)
@@ -103,6 +101,20 @@ func TestGetTripInternalError(t *testing.T) {
 	require.NotNil(t, problem.Instance)
 	assert.Equal(t, "/api/v1/trips/"+tripID.String(), *problem.Instance)
 	assert.NotContains(t, string(responseBody), internalError.Error())
+}
+
+func newFixture(t *testing.T) *fixture {
+	t.Helper()
+
+	ctrl := gomock.NewController(t)
+	service := NewMocktripGetter(ctrl)
+	logger := slog.New(slog.DiscardHandler)
+
+	return &fixture{
+		service:  service,
+		handler:  get.NewHandler(service, logger),
+		recorder: httptest.NewRecorder(),
+	}
 }
 
 func validTrip(t *testing.T, id uuid.UUID) trip.Trip {

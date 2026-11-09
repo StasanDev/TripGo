@@ -2,7 +2,7 @@ package http
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -19,6 +19,7 @@ type Handler struct {
 	finish           *finish.Handler
 	pinger           pinger
 	readinessTimeout time.Duration
+	logger           *slog.Logger
 }
 
 func NewHandler(
@@ -27,6 +28,7 @@ func NewHandler(
 	finishHandler *finish.Handler,
 	pinger pinger,
 	readinessTimeout time.Duration,
+	logger *slog.Logger,
 ) *Handler {
 	return &Handler{
 		create:           createHandler,
@@ -34,6 +36,7 @@ func NewHandler(
 		finish:           finishHandler,
 		pinger:           pinger,
 		readinessTimeout: readinessTimeout,
+		logger:           logger,
 	}
 }
 
@@ -49,8 +52,14 @@ func (h *Handler) FinishTrip(w http.ResponseWriter, r *http.Request, id api.Trip
 	h.finish.FinishTrip(w, r, id)
 }
 
-func (h *Handler) Health(w http.ResponseWriter, _ *http.Request) {
-	response.WriteJSON(w, http.StatusOK, api.HealthResponse{Status: api.Ok})
+func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
+	if err := response.WriteJSON(w, http.StatusOK, api.HealthResponse{Status: api.Ok}); err != nil {
+		h.logger.ErrorContext(
+			r.Context(),
+			"failed to write health response",
+			slog.Any("error", err),
+		)
+	}
 }
 
 func (h *Handler) Ready(w http.ResponseWriter, r *http.Request) {
@@ -58,10 +67,30 @@ func (h *Handler) Ready(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	if err := h.pinger.Ping(ctx); err != nil {
-		log.Printf("readiness check failed: %v", err)
-		response.WriteJSON(w, http.StatusServiceUnavailable, api.HealthResponse{Status: api.Unavailable})
+		h.logger.ErrorContext(
+			r.Context(),
+			"readiness check failed",
+			slog.Any("error", err),
+		)
+		if err := response.WriteJSON(
+			w,
+			http.StatusServiceUnavailable,
+			api.HealthResponse{Status: api.Unavailable},
+		); err != nil {
+			h.logger.ErrorContext(
+				r.Context(),
+				"failed to write readiness response",
+				slog.Any("error", err),
+			)
+		}
 		return
 	}
 
-	response.WriteJSON(w, http.StatusOK, api.HealthResponse{Status: api.Ok})
+	if err := response.WriteJSON(w, http.StatusOK, api.HealthResponse{Status: api.Ok}); err != nil {
+		h.logger.ErrorContext(
+			r.Context(),
+			"failed to write readiness response",
+			slog.Any("error", err),
+		)
+	}
 }

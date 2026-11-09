@@ -24,4 +24,8 @@ type (
 	txManager interface {
 		Do(ctx context.Context, fn func(ctx context.Context) error) error
 	}
+
+	recorder interface {
+		Complete(ctx context.Context, tripID uuid.UUID)
+	}
 )
