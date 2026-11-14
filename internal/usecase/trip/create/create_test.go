@@ -22,11 +22,39 @@ type createTestDependencies struct {
 	historyRepository     *MocktripStatusHistoryRepository
 	idempotencyRepository *MockidempotencyRepository
 	txManager             *MocktxManager
+	recorder              *Mockrecorder
 	service               *create.Service
 }
 
 func TestCreateTripSuccess(t *testing.T) {
 	deps := newCreateTestDependencies(t)
+	input := validTripInput()
+
+	expectTransaction(deps.txManager)
+	savedTrip := expectTripPersistence(t, deps, input)
+	deps.recorder.EXPECT().
+		Create(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, tripID uuid.UUID) {
+			assert.Equal(t, savedTrip.ID, tripID)
+		})
+
+	createdTrip, replayed, err := deps.service.CreateTrip(context.Background(), input)
+
+	require.NoError(t, err)
+	assert.False(t, replayed)
+	assert.Equal(t, *savedTrip, createdTrip)
+}
+
+func TestCreateTripWithoutRecorder(t *testing.T) {
+	deps := newCreateTestDependencies(t)
+	deps.service = create.NewService(
+		deps.tripRepository,
+		deps.txManager,
+		deps.idempotencyRepository,
+		deps.historyRepository,
+		testIdempotencyTTL,
+		nil,
+	)
 	input := validTripInput()
 
 	expectTransaction(deps.txManager)
@@ -123,6 +151,11 @@ func TestCreateTripWithNewIdempotencyKey(t *testing.T) {
 		})
 
 	savedTrip := expectTripPersistence(t, deps, input)
+	deps.recorder.EXPECT().
+		Create(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, tripID uuid.UUID) {
+			assert.Equal(t, savedTrip.ID, tripID)
+		})
 
 	createdTrip, replayed, err := deps.service.CreateTrip(context.Background(), input)
 
@@ -153,12 +186,39 @@ func TestCreateTripIdempotencyReplay(t *testing.T) {
 	deps.tripRepository.EXPECT().
 		GetTrip(gomock.Any(), existingRecord.TripID).
 		Return(replayedTrip, nil)
+	deps.recorder.EXPECT().Create(gomock.Any(), gomock.Any()).Times(0)
 
 	createdTrip, replayed, err := deps.service.CreateTrip(context.Background(), input)
 
 	require.NoError(t, err)
 	assert.True(t, replayed)
 	assert.Equal(t, replayedTrip, createdTrip)
+}
+
+func TestCreateTripIdempotencyGetTripError(t *testing.T) {
+	deps := newCreateTestDependencies(t)
+	input := validTripInputWithIdempotency()
+	repositoryErr := errors.New("trip repository failed")
+	existingRecord := trip.NewIdempotencyRecord(
+		*input.IdempotencyKey,
+		input.RequestHash,
+		uuid.New(),
+		time.Now().Add(time.Hour),
+	)
+
+	expectTransaction(deps.txManager)
+	deps.idempotencyRepository.EXPECT().
+		ReserveOrGet(gomock.Any(), gomock.Any()).
+		Return(existingRecord, false, nil)
+	deps.tripRepository.EXPECT().
+		GetTrip(gomock.Any(), existingRecord.TripID).
+		Return(trip.Trip{}, repositoryErr)
+
+	createdTrip, replayed, err := deps.service.CreateTrip(context.Background(), input)
+
+	require.ErrorIs(t, err, repositoryErr)
+	assert.Equal(t, trip.Trip{}, createdTrip)
+	assert.False(t, replayed)
 }
 
 func TestCreateTripIdempotencyConflict(t *testing.T) {
@@ -208,19 +268,21 @@ func newCreateTestDependencies(t *testing.T) *createTestDependencies {
 	historyRepository := NewMocktripStatusHistoryRepository(ctrl)
 	idempotencyRepository := NewMockidempotencyRepository(ctrl)
 	txManager := NewMocktxManager(ctrl)
+	recorder := NewMockrecorder(ctrl)
 
 	return &createTestDependencies{
 		tripRepository:        tripRepository,
 		historyRepository:     historyRepository,
 		idempotencyRepository: idempotencyRepository,
 		txManager:             txManager,
+		recorder:              recorder,
 		service: create.NewService(
 			tripRepository,
 			txManager,
 			idempotencyRepository,
 			historyRepository,
 			testIdempotencyTTL,
-			nil,
+			recorder,
 		),
 	}
 }

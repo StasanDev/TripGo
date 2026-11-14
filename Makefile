@@ -41,7 +41,19 @@ INTEGRATION_PACKAGES = ./internal/repository/postgres/...
 SERVICE_VERSION ?= dev
 GO_LDFLAGS = -X main.serviceVersion=$(SERVICE_VERSION)
 
-.PHONY: build run test test-integration lint generate migrate migrate-down migrate-status
+MUTATION_STAGE ?= current
+MUTATION_DIR := $(CURDIR)/docs/lab2/mutation
+
+GREMLINS := $(CURDIR)/bin/gremlins
+GREMLINS_FLAGS := --invert-logical --invert-assignments \
+	--invert-bitwise --invert-bwassign --invert-loopctrl \
+	--remove-self-assignments --workers 2 --timeout-coefficient 10
+
+GO_MUTESTING := $(CURDIR)/bin/go-mutesting
+GO_MUTESTING_VERSION := v0.0.0-20210610104036-6d9217011a00
+GO_MUTESTING_FLAGS := --exec-timeout=60
+
+.PHONY: build run test test-integration lint generate migrate migrate-down migrate-status mutation
 
 build:
 	go build -ldflags "$(GO_LDFLAGS)" ./...
@@ -78,3 +90,33 @@ migrate-down:
 
 migrate-status:
 	go tool goose -dir "$(MIGRATIONS_DIR)" "$(GOOSE_DRIVER)" "$(DATABASE_URL)" status
+
+$(GREMLINS):
+	GOBIN="$(CURDIR)/bin" go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0
+
+# The original x/tools dependency is incompatible with Go 1.27.
+# Build the pinned tool with a compatible x/tools in an isolated module.
+$(GO_MUTESTING):
+	@set -eu; \
+		build_dir=$$(mktemp -d); \
+		trap 'rm -rf "$$build_dir"' EXIT; \
+		cd "$$build_dir"; \
+		go mod init mutation-tools; \
+		go get github.com/zimmski/go-mutesting/cmd/go-mutesting@$(GO_MUTESTING_VERSION) golang.org/x/tools@v0.51.0; \
+		GOBIN="$(@D)" go install github.com/zimmski/go-mutesting/cmd/go-mutesting
+
+mutation: SHELL := bash
+mutation: .SHELLFLAGS := -o pipefail -c
+mutation: $(GREMLINS) $(GO_MUTESTING)
+	@command -v jq >/dev/null
+	mkdir -p "$(MUTATION_DIR)"
+	"$(GREMLINS)" unleash "$(CURDIR)/internal/domain" $(GREMLINS_FLAGS) \
+		--output "$(MUTATION_DIR)/domain-$(MUTATION_STAGE).json"
+	jq --indent 4 . "$(MUTATION_DIR)/domain-$(MUTATION_STAGE).json" > "$(MUTATION_DIR)/domain-$(MUTATION_STAGE).json.tmp"
+	mv "$(MUTATION_DIR)/domain-$(MUTATION_STAGE).json.tmp" "$(MUTATION_DIR)/domain-$(MUTATION_STAGE).json"
+	"$(GREMLINS)" unleash "$(CURDIR)/internal/usecase" $(GREMLINS_FLAGS) \
+		--output "$(MUTATION_DIR)/usecase-$(MUTATION_STAGE).json"
+	jq --indent 4 . "$(MUTATION_DIR)/usecase-$(MUTATION_STAGE).json" > "$(MUTATION_DIR)/usecase-$(MUTATION_STAGE).json.tmp"
+	mv "$(MUTATION_DIR)/usecase-$(MUTATION_STAGE).json.tmp" "$(MUTATION_DIR)/usecase-$(MUTATION_STAGE).json"
+	"$(GO_MUTESTING)" $(GO_MUTESTING_FLAGS) ./internal/domain/... ./internal/usecase/... \
+		2>&1 | tee "$(MUTATION_DIR)/go-mutesting-$(MUTATION_STAGE).log"

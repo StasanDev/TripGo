@@ -2,6 +2,7 @@ package finish_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -90,6 +91,55 @@ func TestFinishTripNotFound(t *testing.T) {
 	finishedTrip, err := deps.service.FinishTrip(context.Background(), tripID)
 
 	require.ErrorIs(t, err, trip.ErrTripNotFound)
+	assert.Equal(t, trip.Trip{}, finishedTrip)
+}
+
+func TestFinishTripRepositoryError(t *testing.T) {
+	deps := newFinishTestDependencies(t)
+	activeTrip := storedActiveTrip(t)
+	repositoryErr := errors.New("trip repository failed")
+
+	expectTransaction(deps.txManager)
+	getCall := deps.tripRepository.EXPECT().
+		GetTrip(gomock.Any(), activeTrip.ID).
+		Return(activeTrip, nil)
+	finishCall := deps.tripRepository.EXPECT().
+		FinishTrip(gomock.Any(), activeTrip.ID, gomock.Any()).
+		Return(trip.Trip{}, repositoryErr)
+
+	gomock.InOrder(getCall, finishCall)
+
+	finishedTrip, err := deps.service.FinishTrip(context.Background(), activeTrip.ID)
+
+	require.ErrorIs(t, err, repositoryErr)
+	assert.Equal(t, trip.Trip{}, finishedTrip)
+}
+
+func TestFinishTripHistoryError(t *testing.T) {
+	deps := newFinishTestDependencies(t)
+	activeTrip := storedActiveTrip(t)
+	historyErr := errors.New("history repository failed")
+
+	expectTransaction(deps.txManager)
+	getCall := deps.tripRepository.EXPECT().
+		GetTrip(gomock.Any(), activeTrip.ID).
+		Return(activeTrip, nil)
+	finishCall := deps.tripRepository.EXPECT().
+		FinishTrip(gomock.Any(), activeTrip.ID, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ uuid.UUID, finishedAt time.Time) (trip.Trip, error) {
+			completedTrip := activeTrip
+			require.NoError(t, completedTrip.Finish(finishedAt))
+			return completedTrip, nil
+		})
+	historyCall := deps.historyRepository.EXPECT().
+		AddInTripHistory(gomock.Any(), gomock.Any()).
+		Return(historyErr)
+
+	gomock.InOrder(getCall, finishCall, historyCall)
+
+	finishedTrip, err := deps.service.FinishTrip(context.Background(), activeTrip.ID)
+
+	require.ErrorIs(t, err, historyErr)
 	assert.Equal(t, trip.Trip{}, finishedTrip)
 }
 

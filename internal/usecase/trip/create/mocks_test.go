@@ -186,3 +186,39 @@ func (mr *MockidempotencyRepositoryMockRecorder) ReserveOrGet(ctx, record any) *
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReserveOrGet", reflect.TypeOf((*MockidempotencyRepository)(nil).ReserveOrGet), ctx, record)
 }
+
+// Mockrecorder is a mock of recorder interface.
+type Mockrecorder struct {
+	ctrl     *gomock.Controller
+	recorder *MockrecorderMockRecorder
+	isgomock struct{}
+}
+
+// MockrecorderMockRecorder is the mock recorder for Mockrecorder.
+type MockrecorderMockRecorder struct {
+	mock *Mockrecorder
+}
+
+// NewMockrecorder creates a new mock instance.
+func NewMockrecorder(ctrl *gomock.Controller) *Mockrecorder {
+	mock := &Mockrecorder{ctrl: ctrl}
+	mock.recorder = &MockrecorderMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *Mockrecorder) EXPECT() *MockrecorderMockRecorder {
+	return m.recorder
+}
+
+// Create mocks base method.
+func (m *Mockrecorder) Create(ctx context.Context, tripID uuid.UUID) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Create", ctx, tripID)
+}
+
+// Create indicates an expected call of Create.
+func (mr *MockrecorderMockRecorder) Create(ctx, tripID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*Mockrecorder)(nil).Create), ctx, tripID)
+}
