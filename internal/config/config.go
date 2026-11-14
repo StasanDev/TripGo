@@ -2,149 +2,53 @@ package config
 
 import (
 	"fmt"
-	"os"
-	"strconv"
 	"time"
+
+	"github.com/ilyakaznacheev/cleanenv"
 )
 
 type Config struct {
-	LogLevel        string
-	ShutdownTimeout time.Duration
-	IdempotencyTTL  time.Duration
-	Http            HttpConfig
-	DB              DBConfig
+	LogLevel        string        `env:"LOG_LEVEL" env-required:"true"`
+	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" env-required:"true"`
+	IdempotencyTTL  time.Duration `env:"IDEMPOTENCY_TTL" env-default:"24h"`
+	Http            HttpConfig    `env-prefix:"HTTP_"`
+	DB              DBConfig      `env-prefix:"DATABASE_"`
+	OTel            OTelConfig    `env-prefix:"OTEL_"`
 }
 
 type HttpConfig struct {
-	Addr              string
-	ReadTimeout       time.Duration
-	ReadHeaderTimeout time.Duration
-	WriteTimeout      time.Duration
-	IdleTimeout       time.Duration
+	Addr              string        `env:"ADDR" env-required:"true"`
+	ReadTimeout       time.Duration `env:"READ_TIMEOUT" env-default:"30s"`
+	ReadHeaderTimeout time.Duration `env:"READ_HEADER_TIMEOUT" env-default:"5s"`
+	WriteTimeout      time.Duration `env:"WRITE_TIMEOUT" env-default:"30s"`
+	IdleTimeout       time.Duration `env:"IDLE_TIMEOUT" env-default:"60s"`
 }
 
 type DBConfig struct {
-	Url             string
-	MaxConns        int32
-	MinConns        int32
-	ConnectTimeout  time.Duration
-	QueryTimeout    time.Duration
-	MaxConnLifetime time.Duration
+	Url             string        `env:"URL" env-required:"true"`
+	MaxConns        int32         `env:"MAX_CONNS" env-required:"true"`
+	MinConns        int32         `env:"MIN_CONNS" env-required:"true"`
+	ConnectTimeout  time.Duration `env:"CONNECT_TIMEOUT" env-required:"true"`
+	QueryTimeout    time.Duration `env:"QUERY_TIMEOUT" env-required:"true"`
+	MaxConnLifetime time.Duration `env:"MAX_CONN_LIFETIME" env-required:"true"`
 }
 
-var envNames = []string{
-	"LOG_LEVEL", "SHUTDOWN_TIMEOUT", "IDEMPOTENCY_TTL", "HTTP_ADDR", "HTTP_READ_TIMEOUT",
-	"HTTP_READ_HEADER_TIMEOUT", "HTTP_WRITE_TIMEOUT", "HTTP_IDLE_TIMEOUT",
-	"DATABASE_URL", "DATABASE_MIN_CONNS", "DATABASE_MAX_CONNS",
-	"DATABASE_CONNECT_TIMEOUT", "DATABASE_QUERY_TIMEOUT", "DATABASE_MAX_CONN_LIFETIME",
-}
-
-var defaultEnvValues = map[string]string{
-	"IDEMPOTENCY_TTL":          "24h",
-	"HTTP_READ_TIMEOUT":        "30s",
-	"HTTP_READ_HEADER_TIMEOUT": "5s",
-	"HTTP_WRITE_TIMEOUT":       "30s",
-	"HTTP_IDLE_TIMEOUT":        "60s",
-}
-
-var durationEnvNames = []string{
-	"SHUTDOWN_TIMEOUT", "IDEMPOTENCY_TTL", "HTTP_READ_TIMEOUT",
-	"HTTP_READ_HEADER_TIMEOUT", "HTTP_WRITE_TIMEOUT", "HTTP_IDLE_TIMEOUT",
-	"DATABASE_CONNECT_TIMEOUT", "DATABASE_QUERY_TIMEOUT", "DATABASE_MAX_CONN_LIFETIME",
-}
-
-var int32EnvNames = [...]string{
-	"DATABASE_MIN_CONNS", "DATABASE_MAX_CONNS",
+type OTelConfig struct {
+	ServiceName        string `env:"SERVICE_NAME" env-required:"true"`
+	ExporterEndpoint   string `env:"EXPORTER_OTLP_ENDPOINT" env-required:"true"`
+	ExporterProtocol   string `env:"EXPORTER_OTLP_PROTOCOL" env-required:"true"`
+	ResourceAttributes string `env:"RESOURCE_ATTRIBUTES" env-required:"true"`
+	TracesSampler      string `env:"TRACES_SAMPLER" env-required:"true"`
 }
 
 func LoadConfig() (*Config, error) {
-	rawValues, err := readEnv(envNames[:], defaultEnvValues)
-	if err != nil {
-		return nil, err
+	var cfg Config
+	if err := cleanenv.ReadEnv(&cfg); err != nil {
+		return nil, fmt.Errorf("read config: %w", err)
 	}
 
-	durations, err := parseDurations(rawValues, durationEnvNames[:])
-	if err != nil {
-		return nil, err
+	if err := cfg.validate(); err != nil {
+		return nil, fmt.Errorf("validate config: %w", err)
 	}
-
-	integers, err := parseInt32s(rawValues, int32EnvNames[:])
-	if err != nil {
-		return nil, err
-	}
-
-	cfg := Config{
-		LogLevel:        rawValues["LOG_LEVEL"],
-		ShutdownTimeout: durations["SHUTDOWN_TIMEOUT"],
-		IdempotencyTTL:  durations["IDEMPOTENCY_TTL"],
-		Http: HttpConfig{
-			Addr:              rawValues["HTTP_ADDR"],
-			ReadTimeout:       durations["HTTP_READ_TIMEOUT"],
-			ReadHeaderTimeout: durations["HTTP_READ_HEADER_TIMEOUT"],
-			WriteTimeout:      durations["HTTP_WRITE_TIMEOUT"],
-			IdleTimeout:       durations["HTTP_IDLE_TIMEOUT"],
-		},
-		DB: DBConfig{
-			Url:             rawValues["DATABASE_URL"],
-			MaxConns:        integers["DATABASE_MAX_CONNS"],
-			MinConns:        integers["DATABASE_MIN_CONNS"],
-			ConnectTimeout:  durations["DATABASE_CONNECT_TIMEOUT"],
-			QueryTimeout:    durations["DATABASE_QUERY_TIMEOUT"],
-			MaxConnLifetime: durations["DATABASE_MAX_CONN_LIFETIME"],
-		},
-	}
-
-	if cfg.DB.MaxConns < cfg.DB.MinConns {
-		return nil, fmt.Errorf("max count of db connections is lower than min ones")
-	}
-
 	return &cfg, nil
-}
-
-func readEnv(names []string, defaults map[string]string) (map[string]string, error) {
-	values := make(map[string]string, len(names))
-	for _, name := range names {
-		value, ok := os.LookupEnv(name)
-		if !ok || value == "" {
-			value, ok = defaults[name]
-			if !ok {
-				return nil, fmt.Errorf("environment variable %s is required", name)
-			}
-		}
-		values[name] = value
-	}
-
-	return values, nil
-}
-
-func parseDurations(rawValues map[string]string, names []string) (map[string]time.Duration, error) {
-	values := make(map[string]time.Duration, len(names))
-	for _, name := range names {
-		value, err := time.ParseDuration(rawValues[name])
-		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", name, err)
-		}
-		if value <= 0 {
-			return nil, fmt.Errorf("%s must be positive", name)
-		}
-		values[name] = value
-	}
-
-	return values, nil
-}
-
-func parseInt32s(rawValues map[string]string, names []string) (map[string]int32, error) {
-	values := make(map[string]int32, len(names))
-	for _, name := range names {
-		value, err := strconv.ParseInt(rawValues[name], 10, 32)
-		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", name, err)
-		}
-		if value <= 0 {
-			return nil, fmt.Errorf("%s must be positive", name)
-		}
-		values[name] = int32(value)
-	}
-
-	return values, nil
 }

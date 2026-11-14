@@ -5,3 +5,4 @@
 environment.toml
 bin/
 **/*_test.go
+tasks/

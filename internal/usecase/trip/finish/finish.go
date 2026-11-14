@@ -1,0 +1,51 @@
+package finish
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/StasanDev/avitoLabs/internal/domain/trip"
+)
+
+func (s *Service) FinishTrip(ctx context.Context, id uuid.UUID) (trip.Trip, error) {
+	var tripOut trip.Trip
+	err := s.txManager.Do(ctx, func(txCtx context.Context) error {
+		var err error
+		tripOut, err = s.tripRepository.GetTrip(txCtx, id)
+		if err != nil {
+			return fmt.Errorf("get trip to finish: %w", err)
+		}
+
+		fromStatus := tripOut.Status
+		if err := tripOut.Finish(time.Now().UTC()); err != nil {
+			return fmt.Errorf("finish trip: %w", err)
+		}
+
+		tripOut, err = s.tripRepository.FinishTrip(txCtx, id, *tripOut.FinishedAt)
+		if err != nil {
+			return fmt.Errorf("finish trip: %w", err)
+		}
+
+		history := trip.NewTripStatusHistory(
+			tripOut,
+			&fromStatus,
+			trip.TripFinishedReason,
+			*tripOut.FinishedAt,
+		)
+		if err := s.tripStatusHistoryRepository.AddInTripHistory(txCtx, history); err != nil {
+			return fmt.Errorf("add finished trip status history: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return trip.Trip{}, err
+	}
+
+	if s.recorder != nil {
+		s.recorder.Complete(ctx, tripOut.ID)
+	}
+	return tripOut, nil
+}

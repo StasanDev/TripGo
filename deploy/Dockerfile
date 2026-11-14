@@ -2,13 +2,15 @@ FROM golang:1.27-bookworm AS builder
 
 WORKDIR /app
 
+ARG SERVICE_VERSION=dev
+
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 go build \
     -trimpath \
-    -ldflags="-s -w" \
+    -ldflags="-s -w -X main.serviceVersion=${SERVICE_VERSION}" \
     -o /out/trip-service \
     ./cmd/trip-service
 
