@@ -9,7 +9,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric/noop"
-	"go.opentelemetry.io/otel/semconv/v1.37.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -21,6 +21,9 @@ func Tracing(tracerProvider trace.TracerProvider) func(http.Handler) http.Handle
 			otelhttp.WithMeterProvider(noop.NewMeterProvider()),
 		)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			responseWriter := chimiddleware.NewWrapResponseWriter(w, r.ProtoMajor)
+			if state, ok := r.Context().Value(requestStateKey{}).(*requestState); ok {
+				state.spanContext = trace.SpanContextFromContext(r.Context())
+			}
 			defer func() {
 				recovered := recover()
 				if recovered != nil {

@@ -14,6 +14,7 @@ import (
 
 const meterName = "github.com/StasanDev/avitoLabs/internal/http/middleware"
 
+var bucketBoundaries = []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10}
 type httpMetrics struct {
 	routes          chi.Routes
 	requestDuration metric.Float64Histogram
@@ -29,6 +30,7 @@ func Metrics(
 	requestDuration, err := meter.Float64Histogram(
 		"http.server.request.duration",
 		metric.WithDescription("Duration of HTTP server requests."),
+		metric.WithExplicitBucketBoundaries(bucketBoundaries...),
 		metric.WithUnit("s"),
 	)
 	if err != nil {
