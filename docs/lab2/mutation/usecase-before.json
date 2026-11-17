@@ -1,0 +1,157 @@
+{
+    "go_module": "github.com/StasanDev/avitoLabs",
+    "files": [
+        {
+            "file_name": "trip/get/service.go",
+            "mutations": [
+                {
+                    "type": "INVERT_BITWISE",
+                    "status": "KILLED",
+                    "line": 8,
+                    "column": 9
+                }
+            ]
+        },
+        {
+            "file_name": "trip/create/create.go",
+            "mutations": [
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 17,
+                    "column": 9
+                },
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 26,
+                    "column": 29
+                },
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 35,
+                    "column": 11
+                },
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 44,
+                    "column": 12
+                },
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 54,
+                    "column": 81
+                },
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 51,
+                    "column": 62
+                },
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 59,
+                    "column": 9
+                },
+                {
+                    "type": "INVERT_LOGICAL",
+                    "status": "KILLED",
+                    "line": 63,
+                    "column": 15
+                },
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 63,
+                    "column": 29
+                }
+            ]
+        },
+        {
+            "file_name": "trip/create/service.go",
+            "mutations": [
+                {
+                    "type": "INVERT_BITWISE",
+                    "status": "KILLED",
+                    "line": 22,
+                    "column": 9
+                }
+            ]
+        },
+        {
+            "file_name": "trip/finish/finish.go",
+            "mutations": [
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 18,
+                    "column": 10
+                },
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 23,
+                    "column": 51
+                },
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 28,
+                    "column": 10
+                },
+                {
+                    "type": "INVERT_BITWISE",
+                    "status": "KILLED",
+                    "line": 34,
+                    "column": 4
+                },
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 43,
+                    "column": 9
+                },
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 38,
+                    "column": 81
+                },
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 47,
+                    "column": 16
+                }
+            ]
+        },
+        {
+            "file_name": "trip/finish/service.go",
+            "mutations": [
+                {
+                    "type": "INVERT_BITWISE",
+                    "status": "KILLED",
+                    "line": 16,
+                    "column": 9
+                }
+            ]
+        }
+    ],
+    "test_efficacy": 100,
+    "mutations_coverage": 100,
+    "mutants_total": 19,
+    "mutants_killed": 19,
+    "mutants_lived": 0,
+    "mutants_not_viable": 0,
+    "mutants_not_covered": 0,
+    "elapsed_time": 4.089886477,
+    "mutator_statistics": {
+        "conditionals_negation": 14,
+        "invert_bitwise": 4,
+        "invert_logical": 1
+    }
+}

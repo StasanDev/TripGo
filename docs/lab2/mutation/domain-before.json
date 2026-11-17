@@ -1,0 +1,244 @@
+{
+    "go_module": "github.com/StasanDev/avitoLabs",
+    "files": [
+        {
+            "file_name": "trip/validate.go",
+            "mutations": [
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 6,
+                    "column": 14
+                },
+                {
+                    "type": "INVERT_BITWISE",
+                    "status": "KILLED",
+                    "line": 7,
+                    "column": 10
+                },
+                {
+                    "type": "INVERT_BITWISE",
+                    "status": "KILLED",
+                    "line": 10,
+                    "column": 10
+                },
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 9,
+                    "column": 16
+                },
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 12,
+                    "column": 66
+                },
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 15,
+                    "column": 62
+                },
+                {
+                    "type": "CONDITIONALS_BOUNDARY",
+                    "status": "KILLED",
+                    "line": 18,
+                    "column": 13
+                },
+                {
+                    "type": "INVERT_BITWISE",
+                    "status": "KILLED",
+                    "line": 19,
+                    "column": 10
+                },
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 18,
+                    "column": 13
+                },
+                {
+                    "type": "INVERT_LOGICAL",
+                    "status": "KILLED",
+                    "line": 25,
+                    "column": 32
+                },
+                {
+                    "type": "CONDITIONALS_BOUNDARY",
+                    "status": "KILLED",
+                    "line": 25,
+                    "column": 26
+                },
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 25,
+                    "column": 26
+                },
+                {
+                    "type": "INVERT_NEGATIVES",
+                    "status": "KILLED",
+                    "line": 25,
+                    "column": 28
+                },
+                {
+                    "type": "ARITHMETIC_BASE",
+                    "status": "KILLED",
+                    "line": 25,
+                    "column": 28
+                },
+                {
+                    "type": "CONDITIONALS_BOUNDARY",
+                    "status": "KILLED",
+                    "line": 25,
+                    "column": 56
+                },
+                {
+                    "type": "INVERT_BITWISE",
+                    "status": "KILLED",
+                    "line": 26,
+                    "column": 10
+                },
+                {
+                    "type": "ARITHMETIC_BASE",
+                    "status": "KILLED",
+                    "line": 26,
+                    "column": 39
+                },
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 25,
+                    "column": 56
+                },
+                {
+                    "type": "INVERT_LOGICAL",
+                    "status": "KILLED",
+                    "line": 28,
+                    "column": 34
+                },
+                {
+                    "type": "CONDITIONALS_BOUNDARY",
+                    "status": "KILLED",
+                    "line": 28,
+                    "column": 27
+                },
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 28,
+                    "column": 27
+                },
+                {
+                    "type": "INVERT_NEGATIVES",
+                    "status": "KILLED",
+                    "line": 28,
+                    "column": 29
+                },
+                {
+                    "type": "ARITHMETIC_BASE",
+                    "status": "KILLED",
+                    "line": 28,
+                    "column": 29
+                },
+                {
+                    "type": "CONDITIONALS_BOUNDARY",
+                    "status": "KILLED",
+                    "line": 28,
+                    "column": 59
+                },
+                {
+                    "type": "INVERT_BITWISE",
+                    "status": "KILLED",
+                    "line": 29,
+                    "column": 10
+                },
+                {
+                    "type": "ARITHMETIC_BASE",
+                    "status": "KILLED",
+                    "line": 29,
+                    "column": 39
+                },
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 28,
+                    "column": 59
+                }
+            ]
+        },
+        {
+            "file_name": "trip/errors.go",
+            "mutations": [
+                {
+                    "type": "ARITHMETIC_BASE",
+                    "status": "KILLED",
+                    "line": 18,
+                    "column": 24
+                },
+                {
+                    "type": "ARITHMETIC_BASE",
+                    "status": "KILLED",
+                    "line": 18,
+                    "column": 17
+                }
+            ]
+        },
+        {
+            "file_name": "trip/finish.go",
+            "mutations": [
+                {
+                    "type": "INVERT_BITWISE",
+                    "status": "KILLED",
+                    "line": 11,
+                    "column": 17
+                },
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "KILLED",
+                    "line": 6,
+                    "column": 14
+                }
+            ]
+        },
+        {
+            "file_name": "trip/history.go",
+            "mutations": [
+                {
+                    "type": "INVERT_BITWISE",
+                    "status": "NOT COVERED",
+                    "line": 32,
+                    "column": 15
+                }
+            ]
+        },
+        {
+            "file_name": "trip/trip.go",
+            "mutations": [
+                {
+                    "type": "CONDITIONALS_NEGATION",
+                    "status": "NOT COVERED",
+                    "line": 40,
+                    "column": 34
+                }
+            ]
+        }
+    ],
+    "test_efficacy": 100,
+    "mutations_coverage": 93.93939393939394,
+    "mutants_total": 31,
+    "mutants_killed": 31,
+    "mutants_lived": 0,
+    "mutants_not_viable": 0,
+    "mutants_not_covered": 2,
+    "elapsed_time": 7.256992941,
+    "mutator_statistics": {
+        "arithmetic_base": 6,
+        "conditionals_negation": 11,
+        "conditionals_boundary": 5,
+        "invert_bitwise": 7,
+        "invert_logical": 2,
+        "invert_negatives": 2
+    }
+}
